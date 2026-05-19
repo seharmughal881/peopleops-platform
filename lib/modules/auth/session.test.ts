@@ -97,23 +97,22 @@ describe('createSession', () => {
       sameSite: 'lax',
       path: '/',
     })
-    expect(options.expires).toBeInstanceOf(Date)
+    expect(options!.expires).toBeInstanceOf(Date)
   })
 
   it('marks the cookie secure only in production', async () => {
-    const prev = process.env.NODE_ENV
     try {
-      process.env.NODE_ENV = 'development'
+      vi.stubEnv('NODE_ENV', 'development')
       await createSession({ userId: 'u', roles: [], permissions: [] })
-      expect(cookieJar.set.mock.calls[0][2].secure).toBe(false)
+      expect(cookieJar.set.mock.calls[0]![2]!.secure).toBe(false)
 
       cookieJar.store.clear()
       cookieJar.set.mockClear()
-      process.env.NODE_ENV = 'production'
+      vi.stubEnv('NODE_ENV', 'production')
       await createSession({ userId: 'u', roles: [], permissions: [] })
-      expect(cookieJar.set.mock.calls[0][2].secure).toBe(true)
+      expect(cookieJar.set.mock.calls[0]![2]!.secure).toBe(true)
     } finally {
-      process.env.NODE_ENV = prev
+      vi.unstubAllEnvs()
     }
   })
 })
