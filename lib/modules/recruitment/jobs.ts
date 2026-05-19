@@ -7,7 +7,7 @@ import { recordAudit } from '@/lib/modules/audit'
 import { CreateJobSchema } from './schemas'
 
 export async function createJob(formData: FormData) {
-  const actor = await requirePermission('employee:read')
+  const actor = await requirePermission('hiring:write')
   if (!actor.employee) return { error: 'No employee record' }
 
   const parsed = CreateJobSchema.safeParse({
@@ -40,7 +40,7 @@ export async function createJob(formData: FormData) {
 }
 
 export async function setJobStatus(formData: FormData) {
-  const actor = await requirePermission('employee:read')
+  const actor = await requirePermission('hiring:write')
   const id = String(formData.get('id') || '')
   const status = String(formData.get('status') || '')
   if (!['draft', 'open', 'closed', 'filled'].includes(status)) return { error: 'Invalid status' }

@@ -8,7 +8,7 @@ import { getStorage, buildKey } from '@/lib/storage'
 import { AddCandidateSchema, CANDIDATE_STAGES, validateResume } from './schemas'
 
 export async function addCandidate(formData: FormData) {
-  const actor = await requirePermission('employee:read')
+  const actor = await requirePermission('hiring:write')
 
   const parsed = AddCandidateSchema.safeParse({
     jobPostingId: formData.get('jobPostingId'),
@@ -50,7 +50,7 @@ export async function addCandidate(formData: FormData) {
 }
 
 export async function advanceCandidate(formData: FormData) {
-  const actor = await requirePermission('employee:read')
+  const actor = await requirePermission('hiring:write')
   const id = String(formData.get('id') || '')
   const stage = String(formData.get('stage') || '')
   if (!CANDIDATE_STAGES.includes(stage as any)) return { error: 'Invalid stage' }

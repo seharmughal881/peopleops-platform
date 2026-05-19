@@ -7,7 +7,7 @@ import { recordAudit } from '@/lib/modules/audit'
 import { CreateOfferSchema } from './schemas'
 
 export async function createOffer(formData: FormData) {
-  const actor = await requirePermission('employee:read')
+  const actor = await requirePermission('hiring:write')
 
   const parsed = CreateOfferSchema.safeParse({
     candidateId: formData.get('candidateId'),
@@ -37,7 +37,7 @@ export async function createOffer(formData: FormData) {
 }
 
 export async function setOfferStatus(formData: FormData) {
-  const actor = await requirePermission('employee:read')
+  const actor = await requirePermission('hiring:write')
   const id = String(formData.get('id') || '')
   const status = String(formData.get('status') || '')
   if (!['sent', 'accepted', 'declined', 'withdrawn'].includes(status)) return { error: 'Invalid status' }

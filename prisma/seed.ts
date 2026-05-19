@@ -8,7 +8,7 @@ const PERMISSIONS = {
   hr_admin: [
     'employee:*', 'leave:*', 'attendance:*', 'payroll:*',
     'reports:read', 'audit:read', 'role:read', 'policy:*',
-    'benefit:*',
+    'benefit:*', 'hiring:*',
   ],
   recruiter: ['employee:read', 'employee:create', 'hiring:*'],
   manager: [

@@ -2,13 +2,13 @@
 
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/db/client'
-import { requireUser, requirePermission } from '@/lib/modules/auth'
+import { requireUser, requirePermission, hasPermission } from '@/lib/modules/auth'
 import { recordAudit } from '@/lib/modules/audit'
 import { notify } from '@/lib/modules/notifications'
 import { ScheduleInterviewSchema, LogFeedbackSchema } from './schemas'
 
 export async function scheduleInterview(formData: FormData) {
-  const actor = await requirePermission('employee:read')
+  const actor = await requirePermission('hiring:write')
 
   const parsed = ScheduleInterviewSchema.safeParse({
     candidateId: formData.get('candidateId'),
@@ -75,7 +75,7 @@ export async function logInterviewFeedback(formData: FormData) {
 
   const interview = await prisma.interview.findUnique({ where: { id: parsed.data.id } })
   if (!interview) return { error: 'Not found' }
-  if (interview.interviewerId !== user.employee.id && !user.permissions.includes('*')) {
+  if (interview.interviewerId !== user.employee.id && !hasPermission(user.permissions, 'hiring:write')) {
     return { error: 'Forbidden' }
   }
 
