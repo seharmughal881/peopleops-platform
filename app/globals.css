@@ -1,26 +1,286 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  /* Cool-neutral chrome so the teal accent owns the spotlight */
+  --background: oklch(98.5% 0.004 210);
+  --surface: #ffffff;
+  --surface-muted: oklch(96.5% 0.006 210);
+  --surface-hover: oklch(93.5% 0.008 210);
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --border: oklch(91% 0.007 210);
+  --border-strong: oklch(80% 0.012 210);
+
+  --foreground: oklch(22% 0.012 230);
+  --foreground-muted: oklch(48% 0.012 230);
+  --foreground-subtle: oklch(63% 0.012 220);
+
+  /* #3FD8C6 — luminous teal with bright bell + deep rim for gradients */
+  --accent: oklch(80% 0.118 188);
+  --accent-hover: oklch(85% 0.125 188);
+  --accent-bright: oklch(91% 0.105 182);
+  --accent-deep: oklch(58% 0.135 188);
+  --accent-foreground: oklch(20% 0.045 205);
+  --accent-subtle: oklch(95% 0.045 188);
+  --accent-glow: oklch(80% 0.14 188 / 55%);
+  --accent-glow-strong: oklch(80% 0.16 188 / 75%);
+
+  --focus-ring: oklch(80% 0.118 188);
+  --focus-ring-soft: oklch(80% 0.14 188 / 35%);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    /* Deep slate so the teal lights up like a backlit aquarium */
+    --background: oklch(16% 0.012 230);
+    --surface: oklch(20% 0.014 230);
+    --surface-muted: oklch(24% 0.016 230);
+    --surface-hover: oklch(28% 0.018 230);
+
+    --border: oklch(29% 0.016 230);
+    --border-strong: oklch(38% 0.02 230);
+
+    --foreground: oklch(95% 0.006 210);
+    --foreground-muted: oklch(72% 0.01 215);
+    --foreground-subtle: oklch(56% 0.012 220);
+
+    --accent: oklch(82% 0.128 188);
+    --accent-hover: oklch(88% 0.13 188);
+    --accent-bright: oklch(93% 0.1 180);
+    --accent-deep: oklch(55% 0.14 188);
+    --accent-foreground: oklch(16% 0.05 210);
+    --accent-subtle: oklch(30% 0.085 195);
+    --accent-glow: oklch(82% 0.15 188 / 60%);
+    --accent-glow-strong: oklch(82% 0.17 188 / 85%);
+
+    --focus-ring: oklch(82% 0.128 188);
+    --focus-ring-soft: oklch(82% 0.15 188 / 40%);
   }
 }
 
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-hover: var(--surface-hover);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-foreground-subtle: var(--foreground-subtle);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-bright: var(--accent-bright);
+  --color-accent-deep: var(--accent-deep);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-subtle: var(--accent-subtle);
+
+  --color-focus-ring: var(--focus-ring);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+}
+
+html,
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+body {
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* === SCROLLBARS — teal gradient to match the primary button === */
+
+/* WebKit (Chrome, Edge, Safari) */
+*::-webkit-scrollbar {
+  width: 13px;
+  height: 13px;
+}
+*::-webkit-scrollbar-track {
+  background: var(--surface-muted);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb {
+  background-image: radial-gradient(
+    circle at 30% 25%,
+    var(--accent-bright) 0%,
+    var(--accent) 65%,
+    var(--accent-hover) 100%
+  );
+  border: 3px solid var(--surface-muted);
+  border-radius: 999px;
+  box-shadow: 0 0 10px -2px var(--accent-glow);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background-image: radial-gradient(
+    circle at 30% 25%,
+    var(--accent-bright) 0%,
+    var(--accent-bright) 35%,
+    var(--accent) 100%
+  );
+  box-shadow: 0 0 14px 0 var(--accent-glow-strong);
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Wider variant — use on sidebars and tall scroll panels */
+.scroll-wide {
+  scrollbar-width: auto !important;
+}
+.scroll-wide::-webkit-scrollbar {
+  width: 24px !important;
+  height: 24px !important;
+}
+.scroll-wide::-webkit-scrollbar-thumb,
+.scroll-wide::-webkit-scrollbar-thumb:hover {
+  border-width: 3px !important;
+  background-image: radial-gradient(
+    circle at 30% 22%,
+    var(--accent-bright) 0%,
+    var(--accent) 50%,
+    var(--accent-deep) 100%
+  ) !important;
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklch, var(--accent-bright) 85%, transparent),
+    inset 0 -1px 0 0 color-mix(in oklch, var(--accent-deep) 60%, transparent),
+    0 0 14px -2px var(--accent-glow-strong) !important;
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--surface-muted);
+}
+
+/* === GRADIENTS === */
+
+/* Vertical accent gradient — primary buttons, accent surfaces */
+.gradient-accent {
+  background-image: linear-gradient(
+    180deg,
+    var(--accent-hover) 0%,
+    var(--accent) 50%,
+    var(--accent-deep) 100%
+  );
+}
+
+.gradient-accent:hover {
+  background-image: linear-gradient(
+    180deg,
+    var(--accent-bright) 0%,
+    var(--accent-hover) 55%,
+    var(--accent) 100%
+  );
+}
+
+/* Subtle accent gradient — active nav items, soft surfaces */
+.gradient-accent-subtle {
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in oklch, var(--accent) 14%, var(--surface)) 0%,
+    color-mix(in oklch, var(--accent) 6%, var(--surface)) 100%
+  );
+}
+
+/* Ambient teal bloom — sits behind the login card for the backlit feel */
+.bg-ambient {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(
+      ellipse 70% 55% at 15% -5%,
+      color-mix(in oklch, var(--accent) 32%, transparent) 0%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 55% 45% at 95% 105%,
+      color-mix(in oklch, var(--accent-bright) 28%, transparent) 0%,
+      transparent 65%
+    ),
+    radial-gradient(
+      ellipse 40% 30% at 50% 50%,
+      color-mix(in oklch, var(--accent) 8%, transparent) 0%,
+      transparent 75%
+    );
+}
+
+/* Sidebar washes into a soft teal tint at the bottom */
+.bg-sidebar {
+  background-color: var(--surface);
+  background-image: linear-gradient(
+    180deg,
+    var(--surface) 0%,
+    var(--surface) 60%,
+    color-mix(in oklch, var(--accent-subtle) 80%, var(--surface)) 100%
+  );
+}
+
+/* === GLOW SHADOWS === */
+
+.glow-accent {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--accent) 60%, transparent),
+    0 12px 32px -6px var(--accent-glow),
+    0 4px 14px -2px var(--accent-glow);
+}
+
+.glow-accent-soft {
+  box-shadow: 0 8px 24px -10px var(--accent-glow);
+}
+
+.glow-accent-xl {
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--accent) 65%, transparent),
+    0 0 28px -2px var(--accent-glow-strong),
+    0 18px 50px -10px var(--accent-glow),
+    0 4px 18px -4px var(--accent-glow);
+}
+
+/* Jellyfish-bell radial: bright caramel core → deep rim, with halo */
+.brand-mark {
+  background-image:
+    radial-gradient(
+      circle at 30% 25%,
+      var(--accent-bright) 0%,
+      var(--accent) 55%,
+      var(--accent-deep) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklch, var(--accent-bright) 80%, transparent),
+    inset 0 -1px 0 0 color-mix(in oklch, var(--accent-deep) 65%, transparent),
+    0 0 0 1px color-mix(in oklch, var(--accent-deep) 50%, transparent),
+    0 0 24px -2px var(--accent-glow-strong),
+    0 12px 36px -8px var(--accent-glow),
+    0 3px 14px -2px var(--accent-glow);
+}
+
+/* Card top-edge accent stripe — for hero surfaces (Stat, big cards) */
+.card-accent-top {
+  position: relative;
+}
+.card-accent-top::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 2px;
+  border-radius: 999px;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent) 50%,
+    transparent 100%
+  );
+  box-shadow: 0 0 12px 0 var(--accent-glow);
 }
