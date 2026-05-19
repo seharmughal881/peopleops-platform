@@ -7,8 +7,12 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Required for Neon / pgbouncer-pooled hosts: `prisma migrate` needs a
+  // direct (unpooled) connection because pooled connections can't run
+  // session-scoped commands. Falls back to the pooled url for local dev.
+  directUrl = env("DATABASE_URL_UNPOOLED")
 }
 
 // ────────────────────────────────────────────────────────────────────
