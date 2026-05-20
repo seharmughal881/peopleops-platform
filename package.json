@@ -31,6 +31,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1048.0",
     "@node-saml/node-saml": "^5.1.0",
     "@prisma/client": "^6.0.0",
+    "@vercel/blob": "^2.4.0",
     "bcryptjs": "^2.4.3",
     "bullmq": "^5.76.10",
     "cmdk": "^1.1.1",
