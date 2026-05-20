@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db/client'
+import { aggregateReview360, type Review360Summary } from './review360-aggregation'
 
 export async function myGoals(employeeId: string) {
   return prisma.goal.findMany({
@@ -41,13 +42,21 @@ export async function myReviewsToWrite(reviewerId: string) {
 }
 
 export async function myReviewsAboutMe(subjectId: string) {
-  return prisma.review.findMany({
+  const rows = await prisma.review.findMany({
     where: { subjectId, status: 'submitted' },
     include: {
       cycle: { select: { name: true } },
       reviewer: { select: { firstName: true, lastName: true } },
     },
     orderBy: { submittedAt: 'desc' },
+  })
+  // Peer and upward feedback is anonymized to the subject. Self and manager
+  // reviews remain attributed.
+  return rows.map((r) => {
+    if (r.type === 'peer' || r.type === 'upward') {
+      return { ...r, reviewer: { firstName: 'Anonymous', lastName: '' } }
+    }
+    return r
   })
 }
 
@@ -95,6 +104,22 @@ export async function myActivePIP(subjectId: string) {
     where: { subjectId, status: 'active' },
     include: { manager: { select: { firstName: true, lastName: true } } },
   })
+}
+
+export async function review360Summary(cycleId: string, subjectId: string): Promise<Review360Summary> {
+  const reviews = await prisma.review.findMany({
+    where: { cycleId, subjectId },
+    select: { type: true, status: true, rating: true, strengths: true, growthAreas: true },
+  })
+  return aggregateReview360(
+    reviews.map((r) => ({
+      type: r.type as 'self' | 'manager' | 'peer' | 'upward',
+      status: r.status as 'pending' | 'submitted',
+      rating: r.rating,
+      strengths: r.strengths,
+      growthAreas: r.growthAreas,
+    })),
+  )
 }
 
 export async function performanceKPIs() {

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/db/client'
-import { requireUser, requirePermission } from '@/lib/modules/auth'
+import { requireUser } from '@/lib/modules/auth'
 import { recordAudit } from '@/lib/modules/audit'
 import { getStorage, buildKey } from '@/lib/storage'
 
@@ -17,7 +17,7 @@ const ALLOWED_TYPES = new Set([
 ])
 
 export async function uploadDocument(formData: FormData) {
-  const actor = await requirePermission('employee:read')
+  const actor = await requireUser()
 
   const employeeId = String(formData.get('employeeId') || '')
   const type = String(formData.get('type') || 'other')
@@ -25,6 +25,10 @@ export async function uploadDocument(formData: FormData) {
   const file = formData.get('file')
 
   if (!employeeId) return { error: 'employeeId is required' }
+
+  const ownsIt = actor.employee?.id === employeeId
+  const isAdmin = actor.permissions.includes('*') || actor.permissions.includes('employee:read')
+  if (!ownsIt && !isAdmin) return { error: 'Forbidden' }
   if (!(file instanceof File)) return { error: 'No file provided' }
   if (file.size === 0) return { error: 'Empty file' }
   if (file.size > MAX_BYTES) return { error: 'File exceeds 20MB' }

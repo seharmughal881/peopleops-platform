@@ -2,6 +2,12 @@ import { prisma } from '@/lib/db/client'
 import { notify } from '@/lib/modules/notifications'
 import { documentsExpiringSoon } from '@/lib/modules/compliance'
 import { postToSlack, announcementMessage, isSlackConfigured } from '@/lib/modules/integrations/slack'
+import {
+  postToTeams,
+  teamsAnnouncementMessage,
+  teamsNotificationMessage,
+  isTeamsConfigured,
+} from '@/lib/modules/integrations/teams'
 import type { JobPayload } from './queue'
 import nodemailer, { type Transporter } from 'nodemailer'
 
@@ -61,6 +67,29 @@ async function handleAnnouncementSlack(p: Extract<JobPayload, { kind: 'announcem
     ? `${ann.author.employee.firstName} ${ann.author.employee.lastName}`
     : ann.author.email
   const result = await postToSlack(announcementMessage(ann.title, ann.body, authorName))
+  if (!result.ok) throw new Error(result.error)
+}
+
+async function handleTeams(p: Extract<JobPayload, { kind: 'notification.teams' }>) {
+  if (!isTeamsConfigured()) {
+    console.log(`[teams:no-webhook] user=${p.userId} title="${p.title}"`)
+    return
+  }
+  const result = await postToTeams(teamsNotificationMessage(p.title, p.body))
+  if (!result.ok) throw new Error(result.error)
+}
+
+async function handleAnnouncementTeams(p: Extract<JobPayload, { kind: 'announcement.teams-broadcast' }>) {
+  if (!isTeamsConfigured()) return
+  const ann = await prisma.announcement.findUnique({
+    where: { id: p.announcementId },
+    include: { author: { include: { employee: true } } },
+  })
+  if (!ann) return
+  const authorName = ann.author.employee
+    ? `${ann.author.employee.firstName} ${ann.author.employee.lastName}`
+    : ann.author.email
+  const result = await postToTeams(teamsAnnouncementMessage(ann.title, ann.body, authorName))
   if (!result.ok) throw new Error(result.error)
 }
 
@@ -163,8 +192,12 @@ export async function processJob(payload: JobPayload): Promise<void> {
       return handleEmail(payload)
     case 'notification.slack':
       return handleSlack(payload)
+    case 'notification.teams':
+      return handleTeams(payload)
     case 'announcement.slack-broadcast':
       return handleAnnouncementSlack(payload)
+    case 'announcement.teams-broadcast':
+      return handleAnnouncementTeams(payload)
     case 'documents.expiration-check':
       return handleDocumentsExpirationCheck()
     case 'leave.approval-reminder':

@@ -20,11 +20,44 @@ export default async function PayrollPage() {
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Stat label="Total runs" value={dash.totalRuns} hint={`${dash.finalizedRuns} finalized · ${dash.draftRuns} draft`} />
-        <Stat label="Gross to date" value={fmt(dash.totalGross)} hint="USD" />
-        <Stat label="Net to date" value={fmt(dash.totalNet)} hint="USD" />
+        <Stat label="Gross to date" value={fmt(dash.totalGross)} hint={dash.baseCurrency} />
+        <Stat label="Net to date" value={fmt(dash.totalNet)} hint={dash.baseCurrency} />
         <Stat label="Latest run gross" value={dash.latestRun ? fmt(dash.latestRun.gross) : '—'} hint={dash.latestRun ? new Date(dash.latestRun.periodStart).toLocaleDateString() : 'no runs'} />
         <Stat label="Latest run net" value={dash.latestRun ? fmt(dash.latestRun.net) : '—'} hint={dash.latestRun ? `${dash.latestRun.payslips} payslips` : ''} />
       </div>
+
+      {dash.missingRates.length > 0 && (
+        <Card className="border-amber-500/40">
+          <CardHeader
+            title="Missing FX rates"
+            subtitle={`${dash.missingRates.join(', ')} — totals fall back to native amounts. Set PAYROLL_FX_RATES to fix.`}
+          />
+        </Card>
+      )}
+
+      {dash.byCurrency.length > 1 && (
+        <Card>
+          <CardHeader title="By currency" subtitle={`All amounts converted to ${dash.baseCurrency}`} />
+          <Table>
+            <THead>
+              <TR><TH>Currency</TH><TH>Payslips</TH><TH>Native gross</TH><TH>Native net</TH><TH>Converted gross</TH><TH>Converted net</TH><TH>Rate</TH></TR>
+            </THead>
+            <tbody>
+              {dash.byCurrency.map((c) => (
+                <TR key={c.currency}>
+                  <TD className="font-medium">{c.currency}</TD>
+                  <TD className="tabular-nums">{c.count}</TD>
+                  <TD className="tabular-nums">{fmt(c.nativeGross)}</TD>
+                  <TD className="tabular-nums">{fmt(c.nativeNet)}</TD>
+                  <TD className="tabular-nums">{fmt(c.convertedGross)}</TD>
+                  <TD className="tabular-nums">{fmt(c.convertedNet)}</TD>
+                  <TD className="tabular-nums text-xs text-foreground-muted">{c.rate === null ? '—' : c.rate.toFixed(4)}</TD>
+                </TR>
+              ))}
+            </tbody>
+          </Table>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>

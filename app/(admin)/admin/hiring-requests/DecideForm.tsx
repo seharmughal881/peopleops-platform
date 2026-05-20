@@ -5,7 +5,7 @@ import { decideHiringRequest } from '@/lib/modules/recruitment/hiring-requests'
 import { Button } from '@/lib/ui/Button'
 import { Input } from '@/lib/ui/Input'
 
-export function DecideForm({ id }: { id: string }) {
+export function DecideForm({ approvalId }: { approvalId: string }) {
   const [pending, startTransition] = useTransition()
   const [comments, setComments] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -13,7 +13,7 @@ export function DecideForm({ id }: { id: string }) {
   function decide(decision: 'approved' | 'rejected') {
     setError(null)
     const fd = new FormData()
-    fd.set('id', id)
+    fd.set('approvalId', approvalId)
     fd.set('decision', decision)
     if (comments) fd.set('comments', comments)
     startTransition(async () => {

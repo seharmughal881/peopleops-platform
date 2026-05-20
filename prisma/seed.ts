@@ -200,6 +200,30 @@ async function main() {
   }
   console.log('  Benefit plans seeded')
 
+  const hiringRules = [
+    {
+      name: 'Hiring request with budget',
+      entityType: 'HiringRequest',
+      priority: 50,
+      condition: JSON.stringify({ field: 'proposedBudget', op: 'gt', value: 0 }),
+      approverChain: JSON.stringify(['manager', 'hr_admin', 'finance']),
+    },
+    {
+      name: 'Hiring request — no budget',
+      entityType: 'HiringRequest',
+      priority: 100,
+      condition: '{}',
+      approverChain: JSON.stringify(['manager', 'hr_admin']),
+    },
+  ]
+  for (const rule of hiringRules) {
+    const existing = await prisma.approvalRule.findFirst({
+      where: { name: rule.name, entityType: rule.entityType },
+    })
+    if (!existing) await prisma.approvalRule.create({ data: rule })
+  }
+  console.log('  Hiring approval rules seeded')
+
   console.log('Done.')
 }
 

@@ -1,10 +1,12 @@
 import { listAnnouncements } from '@/lib/modules/comms'
 import { isSlackConfigured } from '@/lib/modules/integrations/slack'
+import { isTeamsConfigured } from '@/lib/modules/integrations/teams'
 import { Card, CardHeader } from '@/lib/ui/Card'
 import { Table, THead, TR, TH, TD } from '@/lib/ui/Table'
 import { NewAnnouncementForm } from './NewAnnouncementForm'
 import { DeleteAnnouncementButton } from './DeleteAnnouncementButton'
 import { TestSlackButton } from './TestSlackButton'
+import { TestTeamsButton } from './TestTeamsButton'
 
 export default async function AnnouncementsPage() {
   const items = await listAnnouncements()
@@ -43,6 +45,13 @@ export default async function AnnouncementsPage() {
             subtitle={isSlackConfigured() ? 'Webhook configured — new announcements cross-post to Slack.' : 'Set SLACK_WEBHOOK_URL to enable cross-posting.'}
           />
           <TestSlackButton />
+        </Card>
+        <Card>
+          <CardHeader
+            title="Microsoft Teams integration"
+            subtitle={isTeamsConfigured() ? 'Webhook configured — new announcements cross-post to Teams.' : 'Set TEAMS_WEBHOOK_URL to enable cross-posting.'}
+          />
+          <TestTeamsButton />
         </Card>
       </div>
     </div>

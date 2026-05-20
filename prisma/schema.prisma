@@ -378,6 +378,7 @@ model Payslip {
   grossPay     Float
   deductions   String // JSON: [{label, amount}]
   netPay       Float
+  currency     String   @default("USD")
   s3Key        String? // PDF storage key
   createdAt    DateTime @default(now())
 

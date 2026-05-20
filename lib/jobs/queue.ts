@@ -17,7 +17,9 @@ function connection(): ConnectionOptions {
 export type JobPayload =
   | { kind: 'notification.email'; userId: string; subject: string; body: string }
   | { kind: 'notification.slack'; userId: string; title: string; body?: string }
+  | { kind: 'notification.teams'; userId: string; title: string; body?: string }
   | { kind: 'announcement.slack-broadcast'; announcementId: string }
+  | { kind: 'announcement.teams-broadcast'; announcementId: string }
   | { kind: 'documents.expiration-check' }
   | { kind: 'leave.approval-reminder'; approvalId: string }
   | { kind: 'leave.year-end-rollover'; year?: number }

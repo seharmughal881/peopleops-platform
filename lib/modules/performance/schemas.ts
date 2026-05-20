@@ -32,6 +32,19 @@ export const InitiateReviewSchema = z.object({
   type: z.enum(REVIEW_TYPES),
 })
 
+export const Initiate360Schema = z.object({
+  cycleId: z.string().min(1),
+  subjectId: z.string().min(1),
+  peerIds: z.array(z.string().min(1)).max(20).default([]),
+  upwardReviewerIds: z.array(z.string().min(1)).max(20).default([]),
+  includeSelf: z.coerce.boolean().default(true),
+  includeManager: z.coerce.boolean().default(true),
+}).refine(
+  (v) =>
+    v.includeSelf || v.includeManager || v.peerIds.length > 0 || v.upwardReviewerIds.length > 0,
+  { message: 'A 360 review must include at least one reviewer' },
+)
+
 export const SubmitReviewSchema = z.object({
   id: z.string().min(1),
   rating: z.coerce.number().int().min(1).max(5),

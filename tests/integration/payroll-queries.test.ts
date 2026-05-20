@@ -40,7 +40,7 @@ async function seedRun(opts: {
   periodStart: string
   periodEnd: string
   status?: 'draft' | 'finalized'
-  payslips?: Array<{ employeeId: string; grossPay: number; netPay: number; deductions?: string }>
+  payslips?: Array<{ employeeId: string; grossPay: number; netPay: number; deductions?: string; currency?: string }>
 }) {
   const run = await testPrisma.payslipRun.create({
     data: {
@@ -57,6 +57,7 @@ async function seedRun(opts: {
         grossPay: slip.grossPay,
         netPay: slip.netPay,
         deductions: slip.deductions ?? '[]',
+        currency: slip.currency ?? 'USD',
       },
     })
   }
@@ -228,8 +229,93 @@ describe('payrollDashboard', () => {
       totalNet: 0,
       byMonth: [],
       byDepartment: [],
+      byCurrency: [],
+      missingRates: [],
       latestRun: null,
     })
+    expect(d.baseCurrency).toBe('USD')
+  })
+
+  it('reports a byCurrency breakdown and converts to the base currency', async () => {
+    const usEmp = await seedEmployee({ code: 'C01' })
+    const pkEmp = await seedEmployee({ code: 'C02' })
+
+    await seedRun({
+      periodStart: '2026-03-01',
+      periodEnd: '2026-03-31',
+      payslips: [
+        { employeeId: usEmp.id, grossPay: 5_000, netPay: 4_000, currency: 'USD' },
+        { employeeId: pkEmp.id, grossPay: 278_500, netPay: 250_000, currency: 'PKR' },
+      ],
+    })
+
+    const d = await payrollDashboard()
+    expect(d.baseCurrency).toBe('USD')
+    expect(d.byCurrency).toHaveLength(2)
+
+    const usd = d.byCurrency.find((c) => c.currency === 'USD')!
+    expect(usd).toMatchObject({
+      currency: 'USD',
+      nativeGross: 5_000,
+      nativeNet: 4_000,
+      convertedGross: 5_000,
+      convertedNet: 4_000,
+      count: 1,
+      rate: 1,
+    })
+
+    const pkr = d.byCurrency.find((c) => c.currency === 'PKR')!
+    // Default PKR rate is 278.5 → 278,500 PKR ≈ 1,000 USD
+    expect(pkr.nativeGross).toBe(278_500)
+    expect(pkr.convertedGross).toBeCloseTo(1_000, 0)
+    expect(pkr.rate).toBeCloseTo(0.0036, 4)
+
+    // Total = USD passthrough + PKR converted
+    expect(d.totalGross).toBeCloseTo(6_000, 0)
+    expect(d.missingRates).toEqual([])
+  })
+
+  it('bounds the working set to payslips from the last 24 months', async () => {
+    const emp = await seedEmployee({ code: 'OLD', departmentName: 'Eng' })
+
+    // 3 years old — must be excluded
+    await seedRun({
+      periodStart: '2023-01-01',
+      periodEnd: '2023-01-31',
+      payslips: [{ employeeId: emp.id, grossPay: 99_999, netPay: 99_999 }],
+    })
+    // Current month — must be included
+    const now = new Date()
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    await seedRun({
+      periodStart: `${yyyy}-${mm}-01`,
+      periodEnd: `${yyyy}-${mm}-28`,
+      payslips: [{ employeeId: emp.id, grossPay: 100, netPay: 80 }],
+    })
+
+    const d = await payrollDashboard()
+    // Aggregates exclude the 3-year-old payslip — totals reflect only recent
+    expect(d.totalGross).toBe(100)
+    expect(d.totalNet).toBe(80)
+  })
+
+  it('flags currencies with no FX rate in missingRates', async () => {
+    const emp = await seedEmployee({ code: 'C03' })
+    await seedRun({
+      periodStart: '2026-04-01',
+      periodEnd: '2026-04-30',
+      payslips: [
+        { employeeId: emp.id, grossPay: 1_000, netPay: 800, currency: 'XYZ' },
+      ],
+    })
+
+    const d = await payrollDashboard()
+    expect(d.missingRates).toEqual(['XYZ'])
+    // Unknown rate → amount falls through unchanged
+    const xyz = d.byCurrency.find((c) => c.currency === 'XYZ')!
+    expect(xyz.rate).toBeNull()
+    expect(xyz.convertedGross).toBe(1_000)
   })
 })
 

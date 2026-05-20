@@ -6,7 +6,7 @@ export interface NotifyInput {
   title: string
   body?: string
   link?: string
-  channel?: 'inApp' | 'email' | 'slack'
+  channel?: 'inApp' | 'email' | 'slack' | 'teams'
 }
 
 export async function notify(input: NotifyInput) {
@@ -32,6 +32,13 @@ export async function notify(input: NotifyInput) {
   } else if (channel === 'slack') {
     await enqueue({
       kind: 'notification.slack',
+      userId: input.userId,
+      title: input.title,
+      body: input.body,
+    })
+  } else if (channel === 'teams') {
+    await enqueue({
+      kind: 'notification.teams',
       userId: input.userId,
       title: input.title,
       body: input.body,

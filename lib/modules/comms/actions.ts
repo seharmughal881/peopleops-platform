@@ -7,6 +7,7 @@ import { requirePermission } from '@/lib/modules/auth'
 import { recordAudit } from '@/lib/modules/audit'
 import { enqueue } from '@/lib/jobs/queue'
 import { isSlackConfigured } from '@/lib/modules/integrations/slack'
+import { isTeamsConfigured } from '@/lib/modules/integrations/teams'
 
 const AnnouncementSchema = z.object({
   title: z.string().min(1).max(160),
@@ -35,6 +36,9 @@ export async function createAnnouncement(formData: FormData) {
 
   if (isSlackConfigured()) {
     await enqueue({ kind: 'announcement.slack-broadcast', announcementId: row.id })
+  }
+  if (isTeamsConfigured()) {
+    await enqueue({ kind: 'announcement.teams-broadcast', announcementId: row.id })
   }
 
   revalidatePath('/admin/announcements')

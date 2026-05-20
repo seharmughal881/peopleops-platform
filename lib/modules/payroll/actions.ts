@@ -1,15 +1,33 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { z } from 'zod'
 import { prisma } from '@/lib/db/client'
 import { requirePermission } from '@/lib/modules/auth'
 import { recordAudit } from '@/lib/modules/audit'
+import { computePayslip } from './engine'
+
+const CreatePayslipRunSchema = z
+  .object({
+    periodStart: z.coerce.date(),
+    periodEnd: z.coerce.date(),
+  })
+  .refine((d) => d.periodEnd > d.periodStart, {
+    message: 'periodEnd must be after periodStart',
+    path: ['periodEnd'],
+  })
 
 export async function createPayslipRun(formData: FormData) {
   const actor = await requirePermission('payroll:create')
 
-  const periodStart = new Date(String(formData.get('periodStart')))
-  const periodEnd = new Date(String(formData.get('periodEnd')))
+  const parsed = CreatePayslipRunSchema.safeParse({
+    periodStart: formData.get('periodStart'),
+    periodEnd: formData.get('periodEnd'),
+  })
+  if (!parsed.success) {
+    return { error: 'Validation failed', fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+  const { periodStart, periodEnd } = parsed.data
 
   const run = await prisma.payslipRun.create({ data: { periodStart, periodEnd } })
 
@@ -19,18 +37,21 @@ export async function createPayslipRun(formData: FormData) {
   })
 
   for (const emp of employees) {
-    const monthly = emp.salaryHistory[0]?.amount ?? 0
-    const tax = Math.round(monthly * 0.2 * 100) / 100
-    const deductions = JSON.stringify([{ label: 'Tax', amount: tax }])
-    const netPay = Math.round((monthly - tax) * 100) / 100
+    const latest = emp.salaryHistory[0]
+    const currency = latest?.currency ?? 'USD'
+    const { grossPay, deductions, netPay } = computePayslip({
+      monthlySalary: latest?.amount ?? 0,
+      currency,
+    })
 
     await prisma.payslip.create({
       data: {
         payslipRunId: run.id,
         employeeId: emp.id,
-        grossPay: monthly,
-        deductions,
+        grossPay,
+        deductions: JSON.stringify(deductions),
         netPay,
+        currency,
       },
     })
   }

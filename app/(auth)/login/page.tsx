@@ -1,28 +1,24 @@
 import { FloatingDecor } from '@/lib/ui/FloatingDecor'
 import { LoginForm } from './LoginForm'
+import { LocaleSwitch } from './LocaleSwitch'
 import { isProviderEnabled } from '@/lib/modules/auth/oidc'
 import { isSamlEnabled } from '@/lib/modules/auth/saml'
-
-const SSO_ERROR_MESSAGES: Record<string, string> = {
-  missing_flow_state: 'Sign-in session expired. Please try again.',
-  bad_flow_state: 'Sign-in session was malformed. Please try again.',
-  token_exchange_failed: "Couldn't complete single sign-on. Please try again.",
-  no_claims: 'Identity provider did not return profile information.',
-  email_not_verified: 'Your SSO email is not verified — sign in with a password instead.',
-  no_account_for_email: 'No HR account exists for that email. Ask an admin to create one.',
-  account_inactive: 'That account is inactive. Contact an administrator.',
-  missing_saml_response: 'No SAML response received. Please retry from your IdP.',
-  saml_validation_failed: "Couldn't validate the SAML response. Contact an administrator.",
-}
+import { getLocale, getDictionary } from '@/lib/i18n'
 
 export default async function LoginPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const params = await searchParams
+  const [locale, dict, params] = await Promise.all([
+    getLocale(),
+    getDictionary(),
+    searchParams,
+  ])
+  const t = dict.login
+  const ssoErrors = t.ssoErrors as Record<string, string>
   const ssoErrorKey = typeof params.sso_error === 'string' ? params.sso_error : null
-  const ssoError = ssoErrorKey ? SSO_ERROR_MESSAGES[ssoErrorKey] ?? 'Sign-in failed.' : null
+  const ssoError = ssoErrorKey ? ssoErrors[ssoErrorKey] ?? ssoErrors.generic : null
   const next = typeof params.next === 'string' ? params.next : null
 
   const nextQs = next ? `?next=${encodeURIComponent(next)}` : ''
@@ -34,16 +30,19 @@ export default async function LoginPage({
   return (
     <div className="bg-ambient relative flex min-h-screen items-center justify-center overflow-hidden px-4 py-12">
       <FloatingDecor />
+      <div className="absolute top-4 right-4 z-20">
+        <LocaleSwitch current={locale} labels={dict.locale} />
+      </div>
       <div className="relative z-10 w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <span className="brand-mark mb-5 flex size-14 items-center justify-center rounded-2xl text-lg font-semibold tracking-tight text-accent-foreground">
             HR
           </span>
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
-            Sign in to HR System
+            {t.title}
           </h1>
           <p className="mt-1 text-sm text-foreground-muted">
-            Welcome back — enter your credentials to continue.
+            {t.subtitle}
           </p>
         </div>
 
@@ -63,7 +62,7 @@ export default async function LoginPage({
                     className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted"
                   >
                     <GoogleGlyph />
-                    Sign in with Google
+                    {t.continueWithGoogle}
                   </a>
                 )}
                 {microsoftEnabled && (
@@ -72,7 +71,7 @@ export default async function LoginPage({
                     className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted"
                   >
                     <MicrosoftGlyph />
-                    Sign in with Microsoft
+                    {t.continueWithMicrosoft}
                   </a>
                 )}
                 {samlEnabled && (
@@ -81,19 +80,29 @@ export default async function LoginPage({
                     className="flex w-full items-center justify-center gap-2 rounded-md border border-border bg-surface px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-surface-muted"
                   >
                     <SamlGlyph />
-                    Sign in with SSO
+                    {t.continueWithSaml}
                   </a>
                 )}
               </div>
               <div className="my-4 flex items-center gap-3 text-xs text-foreground-muted">
                 <span className="h-px flex-1 bg-border" />
-                <span>or with email</span>
+                <span>{t.or}</span>
                 <span className="h-px flex-1 bg-border" />
               </div>
             </>
           )}
 
-          <LoginForm />
+          <LoginForm
+            labels={{
+              email: t.emailLabel,
+              password: t.passwordLabel,
+              submit: t.submit,
+              submitting: t.submitting,
+              mfaLabel: t.mfaLabel,
+              mfaHint: t.mfaHint,
+              mfaSubmit: t.mfaSubmit,
+            }}
+          />
         </div>
 
         <div className="mt-4 rounded-md border border-dashed border-border bg-surface-muted/80 px-4 py-3 text-xs text-foreground-muted backdrop-blur-sm">
