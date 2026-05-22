@@ -1,4 +1,5 @@
 import 'server-only'
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db/client'
 
 export async function getEmployeeById(id: string) {
@@ -24,6 +25,70 @@ export async function listEmployees(opts: { departmentId?: string; status?: stri
     include: { department: true, user: { select: { email: true } } },
     orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
   })
+}
+
+type SortField = 'name' | 'employeeCode' | 'email' | 'jobTitle' | 'department' | 'status'
+
+export interface ListEmployeesPagedOpts {
+  q?: string
+  departmentId?: string
+  status?: string
+  sort?: SortField
+  order?: 'asc' | 'desc'
+  page?: number
+  pageSize?: number
+}
+
+export async function listEmployeesPaged(opts: ListEmployeesPagedOpts = {}) {
+  const page = Math.max(1, opts.page ?? 1)
+  const pageSize = Math.max(1, Math.min(200, opts.pageSize ?? 25))
+  const skip = (page - 1) * pageSize
+
+  const where = {
+    ...(opts.departmentId ? { departmentId: opts.departmentId } : {}),
+    ...(opts.status ? { status: opts.status } : {}),
+    ...(opts.q
+      ? {
+          OR: [
+            { firstName: { contains: opts.q, mode: 'insensitive' as const } },
+            { lastName: { contains: opts.q, mode: 'insensitive' as const } },
+            { employeeCode: { contains: opts.q, mode: 'insensitive' as const } },
+            { jobTitle: { contains: opts.q, mode: 'insensitive' as const } },
+            { user: { is: { email: { contains: opts.q, mode: 'insensitive' as const } } } },
+          ],
+        }
+      : {}),
+  }
+
+  const order = opts.order ?? 'asc'
+  type OrderBy =
+    | Prisma.EmployeeOrderByWithRelationInput
+    | Prisma.EmployeeOrderByWithRelationInput[]
+  const orderBy: OrderBy = (() => {
+    switch (opts.sort) {
+      case 'employeeCode': return { employeeCode: order }
+      case 'email': return { user: { email: order } }
+      case 'jobTitle': return { jobTitle: order }
+      case 'department': return { department: { name: order } }
+      case 'status': return { status: order }
+      case 'name':
+      default:
+        return [{ lastName: order }, { firstName: order }]
+    }
+  })()
+
+  const [rows, total] = await Promise.all([
+    prisma.employee.findMany({
+      where,
+      include: { department: true, user: { select: { email: true } } },
+      orderBy,
+      skip,
+      take: pageSize,
+    }),
+    prisma.employee.count({ where }),
+  ])
+
+  return { rows, total, page, pageSize }
 }
 
 export async function listDirectReports(managerId: string) {

@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/db/client'
 import { requireUser } from '@/lib/modules/auth'
 import { recordAudit } from '@/lib/modules/audit'
+import { notifyAttendance, notifyBreak } from '@/lib/modules/integrations/slack'
+import { activeShiftFor, shiftEndDate } from './shift-lookup'
 
 export async function clockIn(formData?: FormData) {
   const user = await requireUser()
@@ -29,6 +31,13 @@ export async function clockIn(formData?: FormData) {
     action: 'attendance.clockIn',
     entityType: 'AttendanceLog',
     entityId: log.id,
+  })
+
+  await notifyAttendance({
+    employeeName: `${user.employee.firstName} ${user.employee.lastName}`,
+    action: 'in',
+    at: log.clockIn,
+    source: log.source,
   })
 
   revalidatePath('/attendance')
@@ -62,7 +71,16 @@ export async function clockOut() {
   const grossMs = now.getTime() - new Date(open.clockIn).getTime()
   const netMs = Math.max(0, grossMs - breakMs)
   const hours = netMs / 3600000
-  const status = hours > 8.5 ? 'overtime' : 'regular'
+
+  // Overtime: any time clocked out past the assigned shift end. Falls back to
+  // hours > 8.5 if the employee has no shift assigned for today.
+  const shift = await activeShiftFor(user.employee.id, new Date(open.clockIn))
+  let status: 'regular' | 'overtime' = 'regular'
+  if (shift) {
+    if (now.getTime() > shiftEndDate(new Date(open.clockIn), shift).getTime()) status = 'overtime'
+  } else if (hours > 8.5) {
+    status = 'overtime'
+  }
 
   const updated = await prisma.attendanceLog.update({
     where: { id: open.id },
@@ -75,6 +93,14 @@ export async function clockOut() {
     entityType: 'AttendanceLog',
     entityId: updated.id,
     after: { hours: Number(hours.toFixed(2)), breakMinutes: Math.round(breakMs / 60000) },
+  })
+
+  await notifyAttendance({
+    employeeName: `${user.employee.firstName} ${user.employee.lastName}`,
+    action: 'out',
+    at: now,
+    source: open.source,
+    hours: Number(hours.toFixed(2)),
   })
 
   revalidatePath('/attendance')
@@ -105,6 +131,13 @@ export async function startBreak() {
     entityType: 'BreakEvent',
     entityId: ev.id,
   })
+
+  await notifyBreak({
+    employeeName: `${user.employee.firstName} ${user.employee.lastName}`,
+    action: 'start',
+    at: ev.startedAt,
+  })
+
   revalidatePath('/attendance')
   return { ok: true }
 }
@@ -134,6 +167,16 @@ export async function endBreak() {
     entityType: 'BreakEvent',
     entityId: ended.id,
   })
+
+  if (ended.endedAt) {
+    await notifyBreak({
+      employeeName: `${user.employee.firstName} ${user.employee.lastName}`,
+      action: 'end',
+      startedAt: ended.startedAt,
+      endedAt: ended.endedAt,
+    })
+  }
+
   revalidatePath('/attendance')
   return { ok: true }
 }

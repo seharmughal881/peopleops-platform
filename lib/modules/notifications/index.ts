@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db/client'
 import { enqueue } from '@/lib/jobs/queue'
+import { publishNotification } from './bus'
 
 export interface NotifyInput {
   userId: string
@@ -12,7 +13,7 @@ export interface NotifyInput {
 export async function notify(input: NotifyInput) {
   const channel = input.channel ?? 'inApp'
 
-  await prisma.notification.create({
+  const created = await prisma.notification.create({
     data: {
       userId: input.userId,
       title: input.title,
@@ -21,6 +22,22 @@ export async function notify(input: NotifyInput) {
       channel,
     },
   })
+
+  // Fan out to any open SSE streams for this user. Don't let a Redis hiccup
+  // break the caller — the row is already persisted and will show up on
+  // the next page load regardless.
+  try {
+    await publishNotification(input.userId, {
+      id: created.id,
+      title: created.title,
+      body: created.body,
+      link: created.link,
+      channel: created.channel,
+      createdAt: created.createdAt.toISOString(),
+    })
+  } catch {
+    // swallow — see comment above
+  }
 
   if (channel === 'email') {
     await enqueue({

@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/db/client'
 import { notify } from '@/lib/modules/notifications'
 import { documentsExpiringSoon } from '@/lib/modules/compliance'
+import { activeShiftFor, shiftStartDate } from '@/lib/modules/attendance/shift-lookup'
 import { postToSlack, announcementMessage, isSlackConfigured } from '@/lib/modules/integrations/slack'
 import {
   postToTeams,
@@ -44,6 +45,7 @@ async function handleEmail(p: Extract<JobPayload, { kind: 'notification.email' }
     to: user.email,
     subject: p.subject,
     text: p.body,
+    ...(p.html ? { html: p.html } : {}),
   })
 }
 
@@ -186,6 +188,56 @@ async function handleYearEndRollover(p: Extract<JobPayload, { kind: 'leave.year-
   }
 }
 
+/**
+ * Daily attendance reconciliation. For every active employee whose shift covered
+ * the target day (defaults to yesterday) and who has no AttendanceLog that day,
+ * insert a zero-hour log with status='missed' so the absence is reportable.
+ * Idempotent: skips employees who already have any log for that day.
+ */
+async function handleDailyMissedCheck(p: Extract<JobPayload, { kind: 'attendance.daily-missed-check' }>) {
+  const target = p.date ? new Date(p.date) : new Date(Date.now() - 24 * 60 * 60 * 1000)
+  target.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(target)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+
+  const employees = await prisma.employee.findMany({
+    where: { status: 'active' },
+    select: { id: true },
+  })
+
+  let created = 0
+  let skipped = 0
+  let noShift = 0
+
+  for (const emp of employees) {
+    const shift = await activeShiftFor(emp.id, target)
+    if (!shift) { noShift++; continue }
+
+    const existing = await prisma.attendanceLog.findFirst({
+      where: { employeeId: emp.id, clockIn: { gte: target, lt: dayEnd } },
+      select: { id: true },
+    })
+    if (existing) { skipped++; continue }
+
+    const anchor = shiftStartDate(target, shift)
+    await prisma.attendanceLog.create({
+      data: {
+        employeeId: emp.id,
+        clockIn: anchor,
+        clockOut: anchor,
+        status: 'missed',
+        source: 'system',
+      },
+    })
+    created++
+  }
+
+  console.log(
+    `[attendance.daily-missed-check] day=${target.toISOString().slice(0, 10)} ` +
+    `created=${created} skipped=${skipped} no_shift=${noShift}`,
+  )
+}
+
 export async function processJob(payload: JobPayload): Promise<void> {
   switch (payload.kind) {
     case 'notification.email':
@@ -204,5 +256,7 @@ export async function processJob(payload: JobPayload): Promise<void> {
       return handleApprovalReminder(payload)
     case 'leave.year-end-rollover':
       return handleYearEndRollover(payload)
+    case 'attendance.daily-missed-check':
+      return handleDailyMissedCheck(payload)
   }
 }

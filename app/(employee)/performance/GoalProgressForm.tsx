@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { updateGoalProgress } from '@/lib/modules/performance/goals'
+import { toastError } from '@/lib/ui/toast'
 
 export function GoalProgressForm({ id, initial }: { id: string; initial: number }) {
   const [value, setValue] = useState(initial)
@@ -11,7 +12,10 @@ export function GoalProgressForm({ id, initial }: { id: string; initial: number 
     const fd = new FormData()
     fd.set('id', id)
     fd.set('progress', String(value))
-    startTransition(async () => { await updateGoalProgress(fd) })
+    startTransition(async () => {
+      const r = await updateGoalProgress(fd)
+      if (r && 'error' in r && r.error) toastError(r.error)
+    })
   }
 
   return (

@@ -17,6 +17,11 @@ export const REPEATABLES: RepeatableSpec[] = [
     payload: { kind: 'leave.year-end-rollover' },
     pattern: '0 1 1 1 *', // Jan 1 at 01:00 every year
   },
+  {
+    name: 'attendance.daily-missed-check',
+    payload: { kind: 'attendance.daily-missed-check' },
+    pattern: '5 0 * * *', // every day 00:05, reconciles the previous day
+  },
 ]
 
 export async function registerRepeatables() {

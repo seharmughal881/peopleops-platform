@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition } from 'react'
 import { clockIn, clockOut, startBreak, endBreak } from '@/lib/modules/attendance/actions'
 import { Button } from '@/lib/ui/Button'
+import { toastError, toastSuccess } from '@/lib/ui/toast'
 
 function captureGeolocation(timeoutMs = 4000): Promise<{ lat: number; lng: number } | null> {
   if (typeof navigator === 'undefined' || !navigator.geolocation) return Promise.resolve(null)
@@ -43,7 +44,6 @@ export function ClockButtons({
   activeBreakStartedAt?: string | null
 }) {
   const [pending, startTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
   const [geoNote, setGeoNote] = useState<string | null>(null)
   const [breakElapsed, setBreakElapsed] = useState<string | null>(null)
 
@@ -57,7 +57,6 @@ export function ClockButtons({
   }, [activeBreakStartedAt])
 
   async function onClockIn() {
-    setError(null)
     setGeoNote('Locating…')
     const geo = await captureGeolocation()
     setGeoNote(geo ? `Captured location (±lat ${geo.lat.toFixed(3)}, lng ${geo.lng.toFixed(3)})` : 'Location not shared (continuing without)')
@@ -69,39 +68,51 @@ export function ClockButtons({
     }
     startTransition(async () => {
       const r = await clockIn(fd)
-      if (r?.error) setError(r.error)
+      if (r && 'error' in r && r.error) toastError(r.error)
+      else toastSuccess('Clocked in')
     })
   }
 
   function onClockOut() {
-    setError(null)
     setGeoNote(null)
     startTransition(async () => {
       const r = await clockOut()
-      if (r?.error) setError(r.error)
+      if (r && 'error' in r && r.error) toastError(r.error)
+      else toastSuccess('Clocked out')
     })
   }
 
   function onStartBreak() {
-    setError(null)
     startTransition(async () => {
       const r = await startBreak()
-      if (r?.error) setError(r.error)
+      if (r && 'error' in r && r.error) toastError(r.error)
+      else toastSuccess('Break started')
     })
   }
 
   function onEndBreak() {
-    setError(null)
     startTransition(async () => {
       const r = await endBreak()
-      if (r?.error) setError(r.error)
+      if (r && 'error' in r && r.error) toastError(r.error)
+      else toastSuccess('Break ended')
     })
   }
 
   const onBreak = !!activeBreakStartedAt
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      {onBreak && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700/60 dark:bg-amber-950/40">
+          <span className="text-2xl" aria-hidden>☕</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">On break</p>
+            <p className="font-mono text-2xl font-semibold tabular-nums text-amber-900 dark:text-amber-50">
+              {breakElapsed ?? '0s'}
+            </p>
+          </div>
+        </div>
+      )}
       <div className="flex flex-wrap gap-3">
         <Button onClick={onClockIn} disabled={pending || isClockedIn}>
           Clock in
@@ -121,7 +132,6 @@ export function ClockButtons({
         )}
       </div>
       {geoNote && <p className="text-xs text-foreground-muted">{geoNote}</p>}
-      {error && <p className="text-sm text-rose-600">{error}</p>}
     </div>
   )
 }

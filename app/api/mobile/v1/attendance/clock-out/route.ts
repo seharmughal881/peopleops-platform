@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/db/client'
 import { authenticateMobile, unauthorized } from '@/lib/modules/auth/mobile'
 import { recordAudit } from '@/lib/modules/audit'
+import { notifyAttendance } from '@/lib/modules/integrations/slack'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,6 +32,14 @@ export async function POST(req: NextRequest) {
     entityType: 'AttendanceLog',
     entityId: updated.id,
     after: { hours: Number(hours.toFixed(2)) },
+  })
+
+  await notifyAttendance({
+    employeeName: `${auth.user.employee.firstName} ${auth.user.employee.lastName}`,
+    action: 'out',
+    at: now,
+    source: 'mobile',
+    hours: Number(hours.toFixed(2)),
   })
 
   return NextResponse.json({ ok: true, log: updated, hours: Number(hours.toFixed(2)) })

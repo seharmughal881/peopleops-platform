@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { deleteEmployeeGdpr } from '@/lib/modules/compliance'
+import { deleteEmployeeGdpr } from '@/lib/modules/compliance/actions'
 import { Button } from '@/lib/ui/Button'
 import { Card, CardHeader } from '@/lib/ui/Card'
 import { Field, Input } from '@/lib/ui/Input'

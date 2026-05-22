@@ -3,6 +3,7 @@ import { prisma } from '@/lib/db/client'
 import { authenticateMobile, unauthorized } from '@/lib/modules/auth/mobile'
 import { decideApproval } from '@/lib/modules/workflows'
 import { notify } from '@/lib/modules/notifications'
+import { enqueue } from '@/lib/jobs/queue'
 import { recordAudit } from '@/lib/modules/audit'
 
 export const dynamic = 'force-dynamic'
@@ -28,73 +29,92 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Already decided' }, { status: 409 })
   }
 
-  await decideApproval({
-    approvalId: body.approvalId,
-    approverId: auth.user.id,
-    decision: body.decision!,
-    comments: body.comments,
-  })
+  let result
+  try {
+    result = await decideApproval({
+      approvalId: body.approvalId,
+      approverId: auth.user.id,
+      decision: body.decision!,
+      comments: body.comments,
+    })
+  } catch (e) {
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : 'Failed to decide' },
+      { status: 400 },
+    )
+  }
 
   if (approval.entityType === 'LeaveRequest') {
     const request = await prisma.leaveRequest.findUnique({
       where: { id: approval.entityId },
-      include: { employee: { include: { user: true } } },
+      include: { employee: true },
     })
-    if (request) {
-      if (body.decision === 'approved') {
-        if (request.leaveType !== 'unpaid') {
-          await prisma.leaveBalance.update({
-            where: {
-              employeeId_leaveType_year: {
-                employeeId: request.employeeId,
-                leaveType: request.leaveType,
-                year: request.startDate.getFullYear(),
-              },
+    if (request && result.chainComplete) {
+      if (result.finalDecision === 'approved' && request.leaveType !== 'unpaid') {
+        await prisma.leaveBalance.update({
+          where: {
+            employeeId_leaveType_year: {
+              employeeId: request.employeeId,
+              leaveType: request.leaveType,
+              year: request.startDate.getFullYear(),
             },
-            data: { balance: { decrement: request.days } },
-          })
-        }
-        await prisma.leaveRequest.update({
-          where: { id: request.id },
-          data: { status: 'approved', decidedAt: new Date() },
-        })
-      } else {
-        await prisma.leaveRequest.update({
-          where: { id: request.id },
-          data: { status: 'rejected', decidedAt: new Date() },
+          },
+          data: { balance: { decrement: request.days } },
         })
       }
+      await prisma.leaveRequest.update({
+        where: { id: request.id },
+        data: { status: result.finalDecision!, decidedAt: new Date() },
+      })
       await notify({
-        userId: request.employee.user.id,
-        title: `Leave ${body.decision}`,
+        userId: request.employee.userId,
+        title: `Leave ${result.finalDecision}`,
         body: body.comments,
         link: '/leave',
       })
+    } else if (request && result.nextApproval) {
+      await notify({
+        userId: result.nextApproval.approverId,
+        title: `Leave request from ${request.employee.firstName} ${request.employee.lastName}`,
+        body: body.comments
+          ? `Approved at level ${approval.level}. ${body.comments}`
+          : `Approved at level ${approval.level}.`,
+        link: '/manager/approvals',
+      })
+      await enqueue(
+        { kind: 'leave.approval-reminder', approvalId: result.nextApproval.id },
+        { delay: 24 * 60 * 60 * 1000 },
+      )
     }
   } else if (approval.entityType === 'Expense') {
-    const remaining = await prisma.approval.count({
-      where: { entityType: 'Expense', entityId: approval.entityId, status: 'pending' },
-    })
-    if (body.decision === 'rejected') {
-      await prisma.expense.update({ where: { id: approval.entityId }, data: { status: 'rejected', decidedAt: new Date() } })
-      await prisma.approval.updateMany({
-        where: { entityType: 'Expense', entityId: approval.entityId, status: 'pending' },
-        data: { status: 'rejected', decidedAt: new Date(), comments: 'Auto-cancelled (earlier rejection)' },
-      })
-    } else if (remaining === 0) {
-      await prisma.expense.update({ where: { id: approval.entityId }, data: { status: 'approved', decidedAt: new Date() } })
-    }
     const expense = await prisma.expense.findUnique({
       where: { id: approval.entityId },
-      include: { employee: { include: { user: true } } },
+      include: { employee: true },
     })
-    if (expense) {
+    if (expense && result.chainComplete) {
+      await prisma.expense.update({
+        where: { id: expense.id },
+        data: { status: result.finalDecision!, decidedAt: new Date() },
+      })
       await notify({
-        userId: expense.employee.user.id,
-        title: `Expense ${body.decision === 'approved' && remaining === 0 ? 'fully approved' : body.decision}`,
+        userId: expense.employee.userId,
+        title: `Expense ${result.finalDecision === 'approved' ? 'fully approved' : 'rejected'}`,
         body: body.comments,
         link: '/expenses',
       })
+    } else if (expense && result.nextApproval) {
+      await notify({
+        userId: result.nextApproval.approverId,
+        title: `Expense ${expense.amount.toFixed(2)} ${expense.currency} from ${expense.employee.firstName} ${expense.employee.lastName}`,
+        body: body.comments
+          ? `Approved at level ${approval.level}. ${body.comments}`
+          : `Approved at level ${approval.level}.`,
+        link: '/manager/approvals',
+      })
+      await enqueue(
+        { kind: 'leave.approval-reminder', approvalId: result.nextApproval.id },
+        { delay: 24 * 60 * 60 * 1000 },
+      )
     }
   }
 
@@ -105,5 +125,5 @@ export async function POST(req: NextRequest) {
     entityId: approval.entityId,
   })
 
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, chainComplete: result.chainComplete })
 }

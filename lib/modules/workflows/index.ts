@@ -20,7 +20,7 @@ export async function startApprovalChain(input: StartApprovalInput) {
           entityId: input.entityId,
           approverId,
           level: idx + 1,
-          status: idx === 0 ? 'pending' : 'pending',
+          status: idx === 0 ? 'pending' : 'waiting',
         },
       })
     )
@@ -43,24 +43,78 @@ export async function startApprovalChain(input: StartApprovalInput) {
   return approvals
 }
 
+export interface DecideApprovalResult {
+  chainComplete: boolean
+  finalDecision: 'approved' | 'rejected' | null
+  nextApproval: { id: string; approverId: string; level: number } | null
+}
+
+// Decides one approval row and advances the chain atomically.
+// - On reject: marks remaining 'waiting' rows as rejected ("auto-cancelled")
+//   so they don't sit in the approver's queue forever.
+// - On approve: promotes the lowest-level waiting row to 'pending'; if none
+//   exists, the chain is complete and the caller should finalize the entity.
 export async function decideApproval(opts: {
   approvalId: string
   approverId: string
   decision: 'approved' | 'rejected'
   comments?: string
-}) {
-  const approval = await prisma.approval.findUnique({ where: { id: opts.approvalId } })
-  if (!approval) throw new Error('Approval not found')
-  if (approval.approverId !== opts.approverId) throw new Error('Not the assigned approver')
-  if (approval.status !== 'pending') throw new Error('Approval already decided')
+}): Promise<DecideApprovalResult> {
+  return prisma.$transaction(async (tx) => {
+    const approval = await tx.approval.findUnique({ where: { id: opts.approvalId } })
+    if (!approval) throw new Error('Approval not found')
+    if (approval.approverId !== opts.approverId) throw new Error('Not the assigned approver')
+    if (approval.status !== 'pending') throw new Error('Approval already decided')
 
-  return prisma.approval.update({
-    where: { id: opts.approvalId },
-    data: {
-      status: opts.decision,
-      comments: opts.comments,
-      decidedAt: new Date(),
-    },
+    await tx.approval.update({
+      where: { id: opts.approvalId },
+      data: {
+        status: opts.decision,
+        comments: opts.comments,
+        decidedAt: new Date(),
+      },
+    })
+
+    if (opts.decision === 'rejected') {
+      await tx.approval.updateMany({
+        where: {
+          entityType: approval.entityType,
+          entityId: approval.entityId,
+          status: 'waiting',
+        },
+        data: {
+          status: 'rejected',
+          decidedAt: new Date(),
+          comments: 'Auto-cancelled (earlier rejection)',
+        },
+      })
+      return { chainComplete: true, finalDecision: 'rejected', nextApproval: null }
+    }
+
+    const next = await tx.approval.findFirst({
+      where: {
+        entityType: approval.entityType,
+        entityId: approval.entityId,
+        level: { gt: approval.level },
+        status: 'waiting',
+      },
+      orderBy: { level: 'asc' },
+    })
+
+    if (!next) {
+      return { chainComplete: true, finalDecision: 'approved', nextApproval: null }
+    }
+
+    await tx.approval.update({
+      where: { id: next.id },
+      data: { status: 'pending' },
+    })
+
+    return {
+      chainComplete: false,
+      finalDecision: null,
+      nextApproval: { id: next.id, approverId: next.approverId, level: next.level },
+    }
   })
 }
 

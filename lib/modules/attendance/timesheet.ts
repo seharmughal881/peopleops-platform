@@ -1,5 +1,6 @@
 import 'server-only'
 import { prisma } from '@/lib/db/client'
+import { activeShiftFor, shiftEndDate } from './shift-lookup'
 
 function startOfWeek(d: Date): Date {
   const x = new Date(d)
@@ -58,12 +59,20 @@ export async function weeklyTimesheet(employeeId: string, weekStart?: Date): Pro
 
   for (const log of logs) {
     if (!log.clockOut) continue // skip open sessions
-    const key = dayKey(new Date(log.clockIn))
+    const clockInDate = new Date(log.clockIn)
+    const clockOutDate = new Date(log.clockOut)
+    const key = dayKey(clockInDate)
     const day = dayMap.get(key)
     if (!day) continue
-    const hours = (new Date(log.clockOut).getTime() - new Date(log.clockIn).getTime()) / 3600000
+    const hours = (clockOutDate.getTime() - clockInDate.getTime()) / 3600000
     day.hours += hours
-    if (hours > 8.5) day.overtimeHours += hours - 8.5
+    const shift = await activeShiftFor(employeeId, clockInDate)
+    if (shift) {
+      const overtimeMs = clockOutDate.getTime() - shiftEndDate(clockInDate, shift).getTime()
+      if (overtimeMs > 0) day.overtimeHours += overtimeMs / 3600000
+    } else if (hours > 8.5) {
+      day.overtimeHours += hours - 8.5
+    }
     day.logs += 1
   }
 

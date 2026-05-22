@@ -1,18 +1,97 @@
 import Link from 'next/link'
-import { listPayslipRuns, payrollDashboard } from '@/lib/modules/payroll'
+import {
+  listPayslipRunsPaged,
+  payrollDashboard,
+} from '@/lib/modules/payroll'
 import { Card, CardHeader, Stat } from '@/lib/ui/Card'
 import { Table, THead, TR, TH, TD, Badge } from '@/lib/ui/Table'
+import { DataTable, parseTableQuery, type Column } from '@/lib/ui/DataTable'
 import { PageHeader } from '@/lib/ui/PageHeader'
-import { EmptyState } from '@/lib/ui/EmptyState'
 import { NewRunForm } from './NewRunForm'
+
+type SortField = 'periodStart' | 'createdAt' | 'status'
+const SORT_FIELDS: ReadonlyArray<SortField> = ['periodStart', 'createdAt', 'status']
+const STATUSES = ['draft', 'finalized']
 
 function fmt(n: number) {
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-export default async function PayrollPage() {
-  const [runs, dash] = await Promise.all([listPayslipRuns(), payrollDashboard()])
+export default async function PayrollPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const query = parseTableQuery(params)
+  const status = typeof params.status === 'string' ? params.status : undefined
+  const sort = (SORT_FIELDS as readonly string[]).includes(query.sort ?? '')
+    ? (query.sort as SortField)
+    : undefined
+
+  const [{ rows, total }, dash] = await Promise.all([
+    listPayslipRunsPaged({
+      q: query.q,
+      status,
+      sort,
+      order: query.order,
+      page: query.page,
+      pageSize: query.pageSize,
+    }),
+    payrollDashboard(),
+  ])
   const maxMonthlyGross = Math.max(...dash.byMonth.map((m) => m.gross), 0)
+
+  type Row = (typeof rows)[number]
+
+  const columns: Column<Row>[] = [
+    {
+      key: 'periodStart',
+      header: 'Period',
+      sortable: true,
+      cell: (r) => (
+        <Link href={`/admin/payroll/${r.id}`} className="font-medium hover:underline">
+          {new Date(r.periodStart).toLocaleDateString()} –{' '}
+          {new Date(r.periodEnd).toLocaleDateString()}
+        </Link>
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      sortable: true,
+      cell: (r) => (
+        <Badge tone={r.status === 'finalized' ? 'success' : 'warn'} dot>
+          {r.status}
+        </Badge>
+      ),
+    },
+    {
+      key: 'payslips',
+      header: 'Payslips',
+      cell: (r) => <span className="tabular-nums">{r._count.payslips}</span>,
+    },
+    {
+      key: 'createdAt',
+      header: 'Created',
+      sortable: true,
+      cell: (r) => new Date(r.createdAt).toLocaleString(),
+    },
+    {
+      key: 'actions',
+      header: '',
+      cell: (r) => (
+        <div className="flex gap-3 text-sm">
+          <Link href={`/admin/payroll/${r.id}`} className="text-accent hover:underline">
+            Open
+          </Link>
+          <a href={`/admin/payroll/${r.id}/export.csv`} className="text-accent hover:underline">
+            CSV
+          </a>
+        </div>
+      ),
+    },
+  ]
 
   return (
     <div className="space-y-6">
@@ -67,7 +146,7 @@ export default async function PayrollPage() {
           ) : (
             <div className="space-y-2">
               {dash.byMonth.map((m) => {
-                const pct = maxMonthlyGross ? (m.gross / maxMonthlyGross) * 100 : 0
+                const pct = maxMonthlyGross ? Math.round((m.gross / maxMonthlyGross) * 100) : 0
                 return (
                   <div key={m.month} className="text-sm">
                     <div className="mb-1 flex justify-between">
@@ -75,7 +154,7 @@ export default async function PayrollPage() {
                       <span className="font-semibold tabular-nums">{fmt(m.gross)}</span>
                     </div>
                     <div className="h-2 overflow-hidden rounded bg-surface-muted">
-                      <div className="h-full bg-accent" style={{ width: `${pct}%` }} />
+                      <div className={`h-full bg-accent w-[${pct}%]`} />
                     </div>
                   </div>
                 )
@@ -110,39 +189,27 @@ export default async function PayrollPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <Card padding="none">
-            <div className="px-5 pt-5">
-              <CardHeader title="Payslip runs" subtitle={`${runs.length} total`} />
-            </div>
-            {runs.length === 0 ? (
-              <div className="px-5 pb-5"><EmptyState title="No runs yet" description="Generate the first payslip run on the right." /></div>
-            ) : (
-              <Table>
-                <THead>
-                  <TR><TH>Period</TH><TH>Status</TH><TH>Payslips</TH><TH>Created</TH><TH></TH></TR>
-                </THead>
-                <tbody>
-                  {runs.map((r) => (
-                    <TR key={r.id}>
-                      <TD className="font-medium">
-                        <Link href={`/admin/payroll/${r.id}`} className="hover:underline">
-                          {new Date(r.periodStart).toLocaleDateString()} – {new Date(r.periodEnd).toLocaleDateString()}
-                        </Link>
-                      </TD>
-                      <TD><Badge tone={r.status === 'finalized' ? 'success' : 'warn'} dot>{r.status}</Badge></TD>
-                      <TD className="tabular-nums">{r._count.payslips}</TD>
-                      <TD>{new Date(r.createdAt).toLocaleString()}</TD>
-                      <TD>
-                        <div className="flex gap-3 text-sm">
-                          <Link href={`/admin/payroll/${r.id}`} className="text-accent hover:underline">Open</Link>
-                          <a href={`/admin/payroll/${r.id}/export.csv`} className="text-accent hover:underline">CSV</a>
-                        </div>
-                      </TD>
-                    </TR>
-                  ))}
-                </tbody>
-              </Table>
-            )}
+          <Card>
+            <CardHeader title="Payslip runs" subtitle={`${total} total`} />
+            <DataTable
+              rows={rows}
+              columns={columns}
+              query={query}
+              total={total}
+              basePath="/admin/payroll"
+              rowKey={(r) => r.id}
+              emptyMessage="No payroll runs match your filters."
+              toolbar={{
+                searchPlaceholder: 'Search status…',
+                filters: [
+                  {
+                    name: 'status',
+                    label: 'Status',
+                    options: STATUSES.map((s) => ({ label: s, value: s })),
+                  },
+                ],
+              }}
+            />
           </Card>
         </div>
         <div>

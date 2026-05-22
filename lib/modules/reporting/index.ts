@@ -5,6 +5,7 @@ export {
   headcountByDepartment,
   headcountTotals,
   headcountMonthlyFlow,
+  headcountTrend,
   tenureDistribution,
 } from './headcount'
 

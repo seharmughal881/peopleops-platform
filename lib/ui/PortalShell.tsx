@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react'
 import { logoutAction } from '@/lib/modules/auth/actions'
+import { NotificationListener } from '@/lib/modules/notifications/NotificationListener'
 import { Avatar } from './Avatar'
 import { CommandPalette } from './CommandPalette'
 import { FloatingDecor } from './FloatingDecor'
@@ -87,6 +88,7 @@ export function PortalShell({
           <div className="mx-auto max-w-6xl">{children}</div>
         </main>
       </div>
+      <NotificationListener />
     </div>
   )
 }

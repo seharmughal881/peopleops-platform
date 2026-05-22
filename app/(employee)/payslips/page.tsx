@@ -31,10 +31,17 @@ export default async function PayslipsPage() {
               <TD>
                 {new Date(p.payslipRun.periodStart).toLocaleDateString()} – {new Date(p.payslipRun.periodEnd).toLocaleDateString()}
               </TD>
-              <TD>${p.grossPay.toFixed(2)}</TD>
-              <TD>${p.netPay.toFixed(2)}</TD>
+              <TD>{p.currency} {p.grossPay.toFixed(2)}</TD>
+              <TD>{p.currency} {p.netPay.toFixed(2)}</TD>
               <TD>{p.payslipRun.status}</TD>
-              <TD>{p.s3Key ? 'PDF available' : '—'}</TD>
+              <TD>
+                <a
+                  href={`/payslips/${p.id}/pdf`}
+                  className="text-accent hover:underline"
+                >
+                  Download PDF
+                </a>
+              </TD>
             </TR>
           ))}
         </tbody>

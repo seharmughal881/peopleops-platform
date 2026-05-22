@@ -27,6 +27,48 @@ export async function listPayslipRuns() {
   })
 }
 
+export interface ListPayslipRunsPagedOpts {
+  q?: string
+  status?: string
+  sort?: 'periodStart' | 'createdAt' | 'status'
+  order?: 'asc' | 'desc'
+  page?: number
+  pageSize?: number
+}
+
+export async function listPayslipRunsPaged(opts: ListPayslipRunsPagedOpts = {}) {
+  const page = Math.max(1, opts.page ?? 1)
+  const pageSize = Math.max(1, Math.min(200, opts.pageSize ?? 25))
+  const skip = (page - 1) * pageSize
+
+  const where = {
+    ...(opts.status ? { status: opts.status } : {}),
+    ...(opts.q
+      ? {
+          OR: [
+            { status: { contains: opts.q, mode: 'insensitive' as const } },
+          ],
+        }
+      : {}),
+  }
+
+  const sortField = opts.sort ?? 'periodStart'
+  const order = opts.order ?? 'desc'
+
+  const [rows, total] = await Promise.all([
+    prisma.payslipRun.findMany({
+      where,
+      include: { _count: { select: { payslips: true } } },
+      orderBy: { [sortField]: order },
+      skip,
+      take: pageSize,
+    }),
+    prisma.payslipRun.count({ where }),
+  ])
+
+  return { rows, total, page, pageSize }
+}
+
 export async function getPayslipRun(id: string) {
   return prisma.payslipRun.findUnique({
     where: { id },

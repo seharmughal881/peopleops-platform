@@ -15,7 +15,7 @@ function connection(): ConnectionOptions {
 }
 
 export type JobPayload =
-  | { kind: 'notification.email'; userId: string; subject: string; body: string }
+  | { kind: 'notification.email'; userId: string; subject: string; body: string; html?: string }
   | { kind: 'notification.slack'; userId: string; title: string; body?: string }
   | { kind: 'notification.teams'; userId: string; title: string; body?: string }
   | { kind: 'announcement.slack-broadcast'; announcementId: string }
@@ -23,6 +23,7 @@ export type JobPayload =
   | { kind: 'documents.expiration-check' }
   | { kind: 'leave.approval-reminder'; approvalId: string }
   | { kind: 'leave.year-end-rollover'; year?: number }
+  | { kind: 'attendance.daily-missed-check'; date?: string }
 
 export function getQueue(): Queue<JobPayload> {
   if (!queue) queue = new Queue<JobPayload>(JOB_QUEUE, { connection: connection() })

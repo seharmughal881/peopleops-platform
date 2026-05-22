@@ -1,11 +1,12 @@
 'use client'
 
-import { useRef, useState, useTransition } from 'react'
+import { useRef, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { attachReceipt, submitExpense, withdrawExpense } from '@/lib/modules/expenses/actions'
 import { Button } from '@/lib/ui/Button'
 import { Field, Input } from '@/lib/ui/Input'
 import { Card, CardHeader } from '@/lib/ui/Card'
+import { toastError, toastSuccess } from '@/lib/ui/toast'
 
 interface Props {
   expenseId: string
@@ -18,40 +19,40 @@ export function ExpenseActions({ expenseId, canEdit, canSubmit, canWithdraw }: P
   const router = useRouter()
   const uploadRef = useRef<HTMLFormElement | null>(null)
   const [pending, startTransition] = useTransition()
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
 
   function doUpload(formData: FormData) {
-    setError(null); setMessage(null)
     formData.set('expenseId', expenseId)
     startTransition(async () => {
       const r = await attachReceipt(formData)
-      if (r?.error) setError(r.error)
+      if (r && 'error' in r && r.error) toastError(r.error)
       else {
-        setMessage('Receipt attached.')
+        toastSuccess('Receipt attached')
         uploadRef.current?.reset()
       }
     })
   }
+
   function doSubmit() {
-    setError(null); setMessage(null)
     const fd = new FormData()
     fd.set('id', expenseId)
     startTransition(async () => {
       const r = await submitExpense(fd)
-      if (r?.error) setError(r.error)
-      else setMessage('Submitted for approval.')
+      if (r && 'error' in r && r.error) toastError(r.error)
+      else toastSuccess('Submitted for approval')
     })
   }
+
   function doWithdraw() {
     if (!confirm('Withdraw and delete this expense?')) return
-    setError(null); setMessage(null)
     const fd = new FormData()
     fd.set('id', expenseId)
     startTransition(async () => {
       const r = await withdrawExpense(fd)
-      if (r?.error) setError(r.error)
-      else router.push('/expenses')
+      if (r && 'error' in r && r.error) toastError(r.error)
+      else {
+        toastSuccess('Expense withdrawn')
+        router.push('/expenses')
+      }
     })
   }
 
@@ -64,7 +65,9 @@ export function ExpenseActions({ expenseId, canEdit, canSubmit, canWithdraw }: P
             <Field label="File">
               <Input type="file" name="file" required accept=".pdf,.png,.jpg,.jpeg,.webp" />
             </Field>
-            <Button type="submit" disabled={pending}>{pending ? 'Uploading…' : 'Attach'}</Button>
+            <Button type="submit" disabled={pending}>
+              {pending ? 'Uploading…' : 'Attach'}
+            </Button>
           </form>
         </Card>
       )}
@@ -83,9 +86,6 @@ export function ExpenseActions({ expenseId, canEdit, canSubmit, canWithdraw }: P
           )}
         </div>
       )}
-
-      {error && <p className="text-sm text-rose-600">{error}</p>}
-      {message && <p className="text-sm text-emerald-600">{message}</p>}
     </div>
   )
 }

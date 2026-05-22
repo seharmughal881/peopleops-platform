@@ -43,6 +43,37 @@ export default async function AttendancePage() {
         />
       </Card>
 
+      {open && open.breaks.length > 0 && (
+        <Card>
+          <CardHeader title="Today's breaks" subtitle={`${open.breaks.length} break${open.breaks.length === 1 ? '' : 's'} this session`} />
+          <Table>
+            <THead>
+              <TR>
+                <TH>#</TH>
+                <TH>Started</TH>
+                <TH>Ended</TH>
+                <TH>Duration</TH>
+              </TR>
+            </THead>
+            <tbody>
+              {[...open.breaks].reverse().map((b, i) => {
+                const start = new Date(b.startedAt)
+                const end = b.endedAt ? new Date(b.endedAt) : null
+                const durationMin = end ? Math.round((end.getTime() - start.getTime()) / 60000) : null
+                return (
+                  <TR key={b.id}>
+                    <TD>{i + 1}</TD>
+                    <TD>{start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TD>
+                    <TD>{end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : <Badge tone="warn">in progress</Badge>}</TD>
+                    <TD>{durationMin !== null ? `${durationMin} min` : '—'}</TD>
+                  </TR>
+                )
+              })}
+            </tbody>
+          </Table>
+        </Card>
+      )}
+
       <Card>
         <CardHeader title="Recent attendance" subtitle="Last 30 days" />
         <Table>

@@ -1,4 +1,9 @@
 // Compliance & Security helpers — GDPR export/delete, policy management, doc expiration.
+//
+// ⚠️ Client components must NOT import this barrel — it pulls in prisma + env
+// which then leaks into the client bundle and breaks env validation in the
+// browser (DATABASE_URL is undefined). Import directly from the sub-file
+// instead, e.g. `import { deleteEmployeeGdpr } from '@/lib/modules/compliance/actions'`.
 import { prisma } from '@/lib/db/client'
 
 export { buildEmployeeExport, hardDeleteEmployee } from './gdpr'

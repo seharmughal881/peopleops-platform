@@ -1,28 +1,23 @@
-import { getOrgChart, type OrgNode } from '@/lib/modules/employee'
+import { listEmployees } from '@/lib/modules/employee'
 import { Card, CardHeader } from '@/lib/ui/Card'
-
-function Tree({ nodes, depth = 0 }: { nodes: OrgNode[]; depth?: number }) {
-  return (
-    <ul className={depth === 0 ? 'space-y-2' : 'ml-6 mt-2 space-y-2 border-l border-border pl-4'}>
-      {nodes.map((n) => (
-        <li key={n.id}>
-          <div className="rounded-md border border-border p-3 text-sm">
-            <p className="font-medium">{n.firstName} {n.lastName}</p>
-            <p className="text-xs text-foreground-muted">{n.jobTitle ?? '—'} · {n.department?.name ?? '—'}</p>
-          </div>
-          {n.reports.length > 0 && <Tree nodes={n.reports} depth={depth + 1} />}
-        </li>
-      ))}
-    </ul>
-  )
-}
+import { OrgChart, type OrgPerson } from './OrgChart'
 
 export default async function OrgChartPage() {
-  const tree = await getOrgChart()
+  const employees = await listEmployees()
+  const people: OrgPerson[] = employees.map((e) => ({
+    id: e.id,
+    firstName: e.firstName,
+    lastName: e.lastName,
+    jobTitle: e.jobTitle ?? null,
+    department: e.department?.name ?? null,
+    email: e.user?.email ?? null,
+    managerId: e.managerId ?? null,
+  }))
+
   return (
     <Card>
-      <CardHeader title="Organizational chart" />
-      {tree.length === 0 ? <p className="text-sm text-foreground-muted">No employees yet.</p> : <Tree nodes={tree} />}
+      <CardHeader title="Organizational chart" subtitle="Drag to pan, scroll to zoom." />
+      <OrgChart people={people} />
     </Card>
   )
 }

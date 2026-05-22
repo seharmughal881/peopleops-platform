@@ -5,29 +5,53 @@
 import { Worker } from 'bullmq'
 import { JOB_QUEUE, processJob, registerRepeatables, type JobPayload } from '../lib/jobs'
 import { getConnection } from '../lib/jobs/queue'
+import { createLogger, reportError } from '../lib/observability/logger'
+
+const log = createLogger('worker')
 
 async function main() {
-  console.log('[worker] starting…')
+  log.info({ pid: process.pid }, 'worker starting')
 
   await registerRepeatables()
 
   const worker = new Worker<JobPayload>(
     JOB_QUEUE,
     async (job) => {
-      console.log(`[worker] ${job.name} id=${job.id}`)
-      await processJob(job.data)
+      const jlog = log.child({ jobId: job.id, jobName: job.name })
+      const started = Date.now()
+      jlog.info({ data: job.data }, 'job start')
+      try {
+        await processJob(job.data)
+        jlog.info({ durationMs: Date.now() - started }, 'job ok')
+      } catch (err) {
+        reportError(err, {
+          scope: 'worker',
+          jobId: job.id,
+          jobName: job.name,
+          jobKind: (job.data as { kind?: string })?.kind,
+          attemptsMade: job.attemptsMade,
+          durationMs: Date.now() - started,
+        })
+        throw err
+      }
     },
     {
       connection: getConnection(),
       concurrency: 5,
-    }
+    },
   )
 
-  worker.on('completed', (job) => console.log(`[worker] ✓ ${job.name} ${job.id}`))
-  worker.on('failed', (job, err) => console.error(`[worker] ✗ ${job?.name} ${job?.id}: ${err.message}`))
+  worker.on('failed', (job, err) => {
+    reportError(err, {
+      scope: 'worker.failed',
+      jobId: job?.id,
+      jobName: job?.name,
+      attemptsMade: job?.attemptsMade,
+    })
+  })
 
   const shutdown = async () => {
-    console.log('[worker] shutting down…')
+    log.info('worker shutting down')
     await worker.close()
     process.exit(0)
   }
@@ -36,6 +60,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('[worker] fatal:', err)
+  reportError(err, { scope: 'worker.fatal' })
   process.exit(1)
 })

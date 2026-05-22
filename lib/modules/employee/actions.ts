@@ -26,32 +26,61 @@ export async function createEmployee(formData: FormData) {
   }
 
   const data = parsed.data
+
+  const [existingUser, existingEmployee] = await Promise.all([
+    prisma.user.findUnique({ where: { email: data.email }, select: { id: true } }),
+    prisma.employee.findUnique({ where: { employeeCode: data.employeeCode }, select: { id: true } }),
+  ])
+  const fieldErrors: Record<string, string[]> = {}
+  if (existingUser) fieldErrors.email = ['This email is already in use']
+  if (existingEmployee) fieldErrors.employeeCode = ['This employee code is already in use']
+  if (Object.keys(fieldErrors).length > 0) {
+    return { error: 'Validation failed', fieldErrors }
+  }
+
   const hashed = await bcrypt.hash(data.tempPassword, 10)
 
-  const user = await prisma.user.create({
-    data: {
-      email: data.email,
-      hashedPassword: hashed,
-      status: 'active',
-    },
-  })
+  let employee
+  try {
+    employee = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          email: data.email,
+          hashedPassword: hashed,
+          status: 'active',
+        },
+      })
 
-  const employee = await prisma.employee.create({
-    data: {
-      userId: user.id,
-      firstName: data.firstName,
-      lastName: data.lastName,
-      employeeCode: data.employeeCode,
-      joinDate: data.joinDate,
-      jobTitle: data.jobTitle,
-      departmentId: data.departmentId,
-      managerId: data.managerId,
-    },
-  })
+      const emp = await tx.employee.create({
+        data: {
+          userId: user.id,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          employeeCode: data.employeeCode,
+          joinDate: data.joinDate,
+          jobTitle: data.jobTitle,
+          departmentId: data.departmentId,
+          managerId: data.managerId,
+        },
+      })
 
-  const empRole = await prisma.role.findUnique({ where: { name: 'employee' } })
-  if (empRole) {
-    await prisma.userRole.create({ data: { userId: user.id, roleId: empRole.id } })
+      const empRole = await tx.role.findUnique({ where: { name: 'employee' } })
+      if (empRole) {
+        await tx.userRole.create({ data: { userId: user.id, roleId: empRole.id } })
+      }
+
+      return emp
+    })
+  } catch (e: unknown) {
+    const err = e as { code?: string; meta?: { target?: string[] } }
+    if (err?.code === 'P2002') {
+      const target = err.meta?.target ?? []
+      const fe: Record<string, string[]> = {}
+      if (target.includes('email')) fe.email = ['This email is already in use']
+      if (target.includes('employeeCode')) fe.employeeCode = ['This employee code is already in use']
+      return { error: 'Already exists', fieldErrors: fe }
+    }
+    throw e
   }
 
   await recordAudit({

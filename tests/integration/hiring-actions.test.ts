@@ -109,7 +109,7 @@ describe('createHiringRequest', () => {
     })
     expect(approvals).toHaveLength(2)
     expect(approvals[0]).toMatchObject({ approverId: manager.user.id, level: 1, status: 'pending' })
-    expect(approvals[1]).toMatchObject({ approverId: hrUser.id, level: 2, status: 'pending' })
+    expect(approvals[1]).toMatchObject({ approverId: hrUser.id, level: 2, status: 'waiting' })
   })
 
   it('adds finance as a 3rd level when proposedBudget > 0', async () => {

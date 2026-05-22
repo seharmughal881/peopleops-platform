@@ -22,10 +22,24 @@ export function LoginForm({ labels }: { labels: LoginFormLabels }) {
   return (
     <form action={action} className="space-y-4">
       <Field label={labels.email} error={state?.fieldErrors?.email?.[0]}>
-        <Input name="email" type="email" autoComplete="email" required readOnly={mfaPhase} />
+        <Input
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          readOnly={mfaPhase}
+          invalid={Boolean(state?.fieldErrors?.email?.[0])}
+        />
       </Field>
       <Field label={labels.password} error={state?.fieldErrors?.password?.[0]}>
-        <Input name="password" type="password" autoComplete="current-password" required readOnly={mfaPhase} />
+        <Input
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          readOnly={mfaPhase}
+          invalid={Boolean(state?.fieldErrors?.password?.[0])}
+        />
       </Field>
       {mfaPhase && (
         <Field label={labels.mfaLabel} error={state?.fieldErrors?.code?.[0]} hint={labels.mfaHint}>
@@ -38,6 +52,7 @@ export function LoginForm({ labels }: { labels: LoginFormLabels }) {
             autoFocus
             required
             placeholder="123456"
+            invalid={Boolean(state?.fieldErrors?.code?.[0])}
           />
         </Field>
       )}

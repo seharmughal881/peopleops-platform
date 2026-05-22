@@ -1,6 +1,6 @@
 export { createPayslipRun } from './actions'
 export {
-  myPayslips, getPayslip, listPayslipRuns, getPayslipRun,
+  myPayslips, getPayslip, listPayslipRuns, listPayslipRunsPaged, getPayslipRun,
   payrollDashboard, payslipDeductions,
   type PayrollDashboard, type PayrollDeductionLine,
 } from './queries'

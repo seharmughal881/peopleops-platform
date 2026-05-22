@@ -7,6 +7,8 @@ import { recordAudit } from '@/lib/modules/audit'
 import { startApprovalChain, decideApproval } from '@/lib/modules/workflows'
 import { resolveApprovers } from '@/lib/modules/workflows/rules'
 import { notify } from '@/lib/modules/notifications'
+import { sendLeaveDecisionEmail } from '@/lib/modules/comms/emails'
+import { enqueue } from '@/lib/jobs/queue'
 import { SubmitLeaveSchema } from './schemas'
 
 function daysBetween(start: Date, end: Date): number {
@@ -114,44 +116,72 @@ export async function decideLeaveRequest(formData: FormData) {
   const approval = await prisma.approval.findUnique({ where: { id: approvalId } })
   if (!approval) return { error: 'Approval not found' }
 
-  await decideApproval({ approvalId, approverId: actor.id, decision, comments })
+  let result
+  try {
+    result = await decideApproval({ approvalId, approverId: actor.id, decision, comments })
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to decide' }
+  }
 
   const request = await prisma.leaveRequest.findUnique({
     where: { id: approval.entityId },
-    include: { employee: { include: { user: true } } },
+    include: { employee: true },
   })
   if (!request) return { error: 'Leave request not found' }
 
-  if (decision === 'approved') {
-    if (request.leaveType !== 'unpaid') {
-      await prisma.leaveBalance.update({
-        where: {
-          employeeId_leaveType_year: {
-            employeeId: request.employeeId,
-            leaveType: request.leaveType,
-            year: request.startDate.getFullYear(),
+  if (result.chainComplete) {
+    if (result.finalDecision === 'approved') {
+      if (request.leaveType !== 'unpaid') {
+        await prisma.leaveBalance.update({
+          where: {
+            employeeId_leaveType_year: {
+              employeeId: request.employeeId,
+              leaveType: request.leaveType,
+              year: request.startDate.getFullYear(),
+            },
           },
-        },
-        data: { balance: { decrement: request.days } },
+          data: { balance: { decrement: request.days } },
+        })
+      }
+      await prisma.leaveRequest.update({
+        where: { id: request.id },
+        data: { status: 'approved', decidedAt: new Date() },
+      })
+    } else {
+      await prisma.leaveRequest.update({
+        where: { id: request.id },
+        data: { status: 'rejected', decidedAt: new Date() },
       })
     }
-    await prisma.leaveRequest.update({
-      where: { id: request.id },
-      data: { status: 'approved', decidedAt: new Date() },
-    })
-  } else {
-    await prisma.leaveRequest.update({
-      where: { id: request.id },
-      data: { status: 'rejected', decidedAt: new Date() },
-    })
-  }
 
-  await notify({
-    userId: request.employee.userId,
-    title: `Leave ${decision}`,
-    body: comments,
-    link: '/leave',
-  })
+    const decidedByName = actor.employee
+      ? `${actor.employee.firstName} ${actor.employee.lastName}`
+      : actor.email
+    await sendLeaveDecisionEmail(request.employee.userId, {
+      recipientName: `${request.employee.firstName} ${request.employee.lastName}`,
+      decision: result.finalDecision ?? 'pending',
+      leaveType: request.leaveType,
+      startDate: request.startDate.toISOString().slice(0, 10),
+      endDate: request.endDate.toISOString().slice(0, 10),
+      days: request.days,
+      comments,
+      decidedBy: decidedByName,
+      link: process.env.APP_URL ? `${process.env.APP_URL}/leave` : '/leave',
+    })
+  } else if (result.nextApproval) {
+    await notify({
+      userId: result.nextApproval.approverId,
+      title: `Leave request from ${request.employee.firstName} ${request.employee.lastName}`,
+      body: comments
+        ? `Approved at level ${approval.level}. ${comments}`
+        : `Approved at level ${approval.level}.`,
+      link: '/manager/approvals',
+    })
+    await enqueue(
+      { kind: 'leave.approval-reminder', approvalId: result.nextApproval.id },
+      { delay: 24 * 60 * 60 * 1000 },
+    )
+  }
 
   await recordAudit({
     userId: actor.id,
@@ -161,5 +191,5 @@ export async function decideLeaveRequest(formData: FormData) {
   })
 
   revalidatePath('/manager/approvals')
-  return { ok: true }
+  return { ok: true, chainComplete: result.chainComplete }
 }

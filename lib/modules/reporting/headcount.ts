@@ -67,6 +67,32 @@ export async function headcountMonthlyFlow(months = 12) {
   }))
 }
 
+// Month-end headcount for the last N months, computed by walking the current
+// active+onLeave count back through the per-month hire/exit flow. Inherits the
+// same `updatedAt`-as-exit-date heuristic caveat as headcountMonthlyFlow.
+export async function headcountTrend(months = 12): Promise<
+  Array<{ label: string; key: string; headcount: number; hires: number; exits: number }>
+> {
+  const [flow, current] = await Promise.all([
+    headcountMonthlyFlow(months),
+    prisma.employee.count({ where: { status: { in: ['active', 'onLeave'] } } }),
+  ])
+  // Walk from "now" back to populate month-end headcounts.
+  let running = current
+  const result = flow.map((b) => ({ ...b, headcount: 0 }))
+  for (let i = result.length - 1; i >= 0; i--) {
+    result[i].headcount = running
+    running = running - result[i].hires + result[i].exits
+  }
+  return result.map(({ label, key, headcount, hires, exits }) => ({
+    label,
+    key,
+    headcount,
+    hires,
+    exits,
+  }))
+}
+
 export async function tenureDistribution() {
   const employees = await prisma.employee.findMany({
     where: { status: 'active' },

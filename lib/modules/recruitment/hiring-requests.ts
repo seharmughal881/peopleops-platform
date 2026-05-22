@@ -193,7 +193,33 @@ export async function decideHiringRequest(formData: FormData) {
         where: { entityType: 'HiringRequest', entityId: req.id },
         orderBy: { level: 'asc' },
       })
-      const nextPending = chain.find((a) => a.level > approval.level && a.status === 'pending')
+      // Next level may be 'waiting' (new chains) or 'pending' (legacy chains
+      // that pre-date the chain-advance fix). Promote to 'pending' so the
+      // next approver's dashboard surfaces it.
+      const nextPending = chain.find(
+        (a) => a.level > approval.level && (a.status === 'waiting' || a.status === 'pending'),
+      )
+
+      if (decision === 'rejected') {
+        // Cascade rejection to any remaining waiting/pending levels.
+        await tx.approval.updateMany({
+          where: {
+            entityType: 'HiringRequest',
+            entityId: req.id,
+            status: { in: ['waiting', 'pending'] },
+          },
+          data: {
+            status: 'rejected',
+            decidedAt: new Date(),
+            comments: 'Auto-cancelled (earlier rejection)',
+          },
+        })
+      } else if (nextPending && nextPending.status === 'waiting') {
+        await tx.approval.update({
+          where: { id: nextPending.id },
+          data: { status: 'pending' },
+        })
+      }
 
       if (decision === 'rejected' || !nextPending) {
         await tx.hiringRequest.update({

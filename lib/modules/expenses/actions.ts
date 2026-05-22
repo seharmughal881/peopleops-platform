@@ -6,6 +6,7 @@ import { requireUser, requirePermission } from '@/lib/modules/auth'
 import { recordAudit } from '@/lib/modules/audit'
 import { startApprovalChain, decideApproval } from '@/lib/modules/workflows'
 import { notify } from '@/lib/modules/notifications'
+import { enqueue } from '@/lib/jobs/queue'
 import { getStorage, buildKey } from '@/lib/storage'
 import { SubmitExpenseSchema, validateReceiptFile } from './schemas'
 
@@ -148,44 +149,44 @@ export async function decideExpense(formData: FormData) {
   if (approval.entityType !== 'Expense') return { error: 'Wrong approval kind' }
   if (approval.approverId !== actor.id) return { error: 'Not the assigned approver' }
 
-  await decideApproval({ approvalId, approverId: actor.id, decision, comments })
+  let result
+  try {
+    result = await decideApproval({ approvalId, approverId: actor.id, decision, comments })
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to decide' }
+  }
 
   const expense = await prisma.expense.findUnique({
     where: { id: approval.entityId },
-    include: { employee: { include: { user: true } } },
+    include: { employee: true },
   })
   if (!expense) return { error: 'Expense not found' }
 
-  // Check if there are more pending approvals in the chain
-  const remaining = await prisma.approval.count({
-    where: { entityType: 'Expense', entityId: expense.id, status: 'pending' },
-  })
-
-  if (decision === 'rejected') {
+  if (result.chainComplete) {
     await prisma.expense.update({
       where: { id: expense.id },
-      data: { status: 'rejected', decidedAt: new Date() },
+      data: { status: result.finalDecision!, decidedAt: new Date() },
     })
-    // Cancel any remaining pending approvals in the chain
-    await prisma.approval.updateMany({
-      where: { entityType: 'Expense', entityId: expense.id, status: 'pending' },
-      data: { status: 'rejected', decidedAt: new Date(), comments: 'Auto-cancelled (earlier rejection)' },
+    await notify({
+      userId: expense.employee.userId,
+      title: `Expense ${result.finalDecision === 'approved' ? 'fully approved' : 'rejected'}`,
+      body: comments,
+      link: '/expenses',
     })
-  } else if (remaining === 0) {
-    // All levels approved
-    await prisma.expense.update({
-      where: { id: expense.id },
-      data: { status: 'approved', decidedAt: new Date() },
+  } else if (result.nextApproval) {
+    await notify({
+      userId: result.nextApproval.approverId,
+      title: `Expense ${expense.amount.toFixed(2)} ${expense.currency} from ${expense.employee.firstName} ${expense.employee.lastName}`,
+      body: comments
+        ? `Approved at level ${approval.level}. ${comments}`
+        : `Approved at level ${approval.level}.`,
+      link: '/manager/approvals',
     })
+    await enqueue(
+      { kind: 'leave.approval-reminder', approvalId: result.nextApproval.id },
+      { delay: 24 * 60 * 60 * 1000 },
+    )
   }
-  // else: more approvers in the chain — leave status as 'submitted'
-
-  await notify({
-    userId: expense.employee.userId,
-    title: `Expense ${decision === 'approved' && remaining === 0 ? 'fully approved' : decision}`,
-    body: comments,
-    link: '/expenses',
-  })
 
   await recordAudit({
     userId: actor.id,
@@ -196,7 +197,7 @@ export async function decideExpense(formData: FormData) {
 
   revalidatePath('/manager/approvals')
   revalidatePath('/admin/expenses')
-  return { ok: true }
+  return { ok: true, chainComplete: result.chainComplete }
 }
 
 export async function markReimbursed(formData: FormData) {
@@ -241,7 +242,7 @@ export async function withdrawExpense(formData: FormData) {
 
   await prisma.$transaction([
     prisma.approval.updateMany({
-      where: { entityType: 'Expense', entityId: id, status: 'pending' },
+      where: { entityType: 'Expense', entityId: id, status: { in: ['pending', 'waiting'] } },
       data: { status: 'rejected', decidedAt: new Date(), comments: 'Withdrawn by employee' },
     }),
     prisma.expense.delete({ where: { id } }),
