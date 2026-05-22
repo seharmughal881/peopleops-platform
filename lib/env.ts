@@ -47,12 +47,13 @@ const schema = z.object({
   PAYROLL_FX_RATES: optionalString,
   FINANCE_GL_MAP: optionalString,
 }).superRefine((v, ctx) => {
-  // S3: region + bucket must be set together (access keys optional — IAM roles supported)
-  if (Boolean(v.AWS_REGION) !== Boolean(v.AWS_S3_BUCKET)) {
+  // S3: if bucket is set, region is required. Region alone is fine —
+  // Vercel/AWS Lambda runtimes auto-set AWS_REGION even when S3 isn't used.
+  if (v.AWS_S3_BUCKET && !v.AWS_REGION) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      path: ['AWS_S3_BUCKET'],
-      message: 'AWS_REGION and AWS_S3_BUCKET must be set together',
+      path: ['AWS_REGION'],
+      message: 'AWS_REGION required when AWS_S3_BUCKET is set',
     })
   }
 
