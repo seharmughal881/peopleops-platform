@@ -39,9 +39,11 @@ function formatDuration(ms: number): string {
 export function ClockButtons({
   isClockedIn,
   activeBreakStartedAt,
+  activeBreakType,
 }: {
   isClockedIn: boolean
   activeBreakStartedAt?: string | null
+  activeBreakType?: 'regular' | 'namaz' | null
 }) {
   const [pending, startTransition] = useTransition()
   const [geoNote, setGeoNote] = useState<string | null>(null)
@@ -84,9 +86,17 @@ export function ClockButtons({
 
   function onStartBreak() {
     startTransition(async () => {
-      const r = await startBreak()
+      const r = await startBreak('regular')
       if (r && 'error' in r && r.error) toastError(r.error)
       else toastSuccess('Break started')
+    })
+  }
+
+  function onStartNamazBreak() {
+    startTransition(async () => {
+      const r = await startBreak('namaz')
+      if (r && 'error' in r && r.error) toastError(r.error)
+      else toastSuccess('Namaz break started')
     })
   }
 
@@ -99,15 +109,36 @@ export function ClockButtons({
   }
 
   const onBreak = !!activeBreakStartedAt
+  const isNamaz = activeBreakType === 'namaz'
 
   return (
     <div className="space-y-3">
       {onBreak && (
-        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700/60 dark:bg-amber-950/40">
-          <span className="text-2xl" aria-hidden>☕</span>
+        <div
+          className={
+            isNamaz
+              ? 'flex items-center gap-3 rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 dark:border-emerald-700/60 dark:bg-emerald-950/40'
+              : 'flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700/60 dark:bg-amber-950/40'
+          }
+        >
+          <span className="text-2xl" aria-hidden>{isNamaz ? '🕌' : '☕'}</span>
           <div className="flex-1">
-            <p className="text-sm font-medium text-amber-900 dark:text-amber-100">On break</p>
-            <p className="font-mono text-2xl font-semibold tabular-nums text-amber-900 dark:text-amber-50">
+            <p
+              className={
+                isNamaz
+                  ? 'text-sm font-medium text-emerald-900 dark:text-emerald-100'
+                  : 'text-sm font-medium text-amber-900 dark:text-amber-100'
+              }
+            >
+              {isNamaz ? 'On namaz break' : 'On break'}
+            </p>
+            <p
+              className={
+                isNamaz
+                  ? 'font-mono text-2xl font-semibold tabular-nums text-emerald-900 dark:text-emerald-50'
+                  : 'font-mono text-2xl font-semibold tabular-nums text-amber-900 dark:text-amber-50'
+              }
+            >
               {breakElapsed ?? '0s'}
             </p>
           </div>
@@ -121,13 +152,18 @@ export function ClockButtons({
           Clock out
         </Button>
         {isClockedIn && !onBreak && (
-          <Button variant="outline" onClick={onStartBreak} disabled={pending}>
-            Start break
-          </Button>
+          <>
+            <Button variant="outline" onClick={onStartBreak} disabled={pending}>
+              Start break
+            </Button>
+            <Button variant="outline" onClick={onStartNamazBreak} disabled={pending}>
+              🕌 Start namaz break
+            </Button>
+          </>
         )}
         {isClockedIn && onBreak && (
           <Button variant="primary" onClick={onEndBreak} disabled={pending}>
-            End break {breakElapsed && <span className="ml-1 tabular-nums opacity-90">({breakElapsed})</span>}
+            End {isNamaz ? 'namaz break' : 'break'} {breakElapsed && <span className="ml-1 tabular-nums opacity-90">({breakElapsed})</span>}
           </Button>
         )}
       </div>

@@ -22,6 +22,16 @@ export const REPEATABLES: RepeatableSpec[] = [
     payload: { kind: 'attendance.daily-missed-check' },
     pattern: '5 0 * * *', // every day 00:05, reconciles the previous day
   },
+  {
+    name: 'attendance.late-check-in-sweep',
+    payload: { kind: 'attendance.late-check-in-sweep' },
+    pattern: '*/5 * * * *', // every 5 minutes; sends a Slack ping to anyone >20 min late
+  },
+  {
+    name: 'attendance.auto-leave-sweep',
+    payload: { kind: 'attendance.auto-leave-sweep' },
+    pattern: '*/15 * * * *', // every 15 minutes; creates pending sick leave for anyone >3 hr late with no clock-in
+  },
 ]
 
 export async function registerRepeatables() {

@@ -9,6 +9,7 @@ import {
   BarChartIcon,
   ArrowLeftIcon,
   BriefcaseIcon,
+  CalendarIcon,
 } from '@/lib/ui/icons'
 
 const GROUPS: NavGroup[] = [
@@ -18,6 +19,7 @@ const GROUPS: NavGroup[] = [
       { label: 'Team overview', href: '/manager', icon: <HomeIcon /> },
       { label: 'Approvals', href: '/manager/approvals', icon: <CheckSquareIcon /> },
       { label: 'Team attendance', href: '/manager/attendance', icon: <ClockIcon /> },
+      { label: 'Team leave', href: '/manager/leave', icon: <CalendarIcon /> },
       { label: 'Team timesheets', href: '/manager/timesheets', icon: <ClockIcon /> },
       { label: 'Performance', href: '/manager/performance', icon: <BarChartIcon /> },
       { label: 'Hiring requests', href: '/manager/hiring-requests', icon: <BriefcaseIcon /> },

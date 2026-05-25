@@ -25,9 +25,10 @@ export default async function TimesheetPage({ searchParams }: { searchParams: Pr
         description={`Week of ${sheet.weekStart} → ${sheet.weekEnd}`}
       />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
         <Stat label="Total hours" value={`${sheet.totalHours}h`} />
-        <Stat label="Overtime" value={`${sheet.totalOvertimeHours}h`} hint="hours over 8.5/day" />
+        <Stat label="Overtime" value={`${sheet.totalOvertimeHours}h`} hint="incl. self-reported" />
+        <Stat label="Self-reported" value={`${sheet.totalSelfReportedHours}h`} hint="approved entries" />
         <Stat label="Working days" value={sheet.days.filter((d) => d.hours > 0).length} />
       </div>
 
@@ -35,17 +36,27 @@ export default async function TimesheetPage({ searchParams }: { searchParams: Pr
         <CardHeader title="Daily breakdown" />
         <Table>
           <THead>
-            <TR><TH>Date</TH><TH>Hours</TH><TH>Overtime</TH><TH>Logs</TH></TR>
+            <TR>
+              <TH>Date</TH>
+              <TH>Clocked</TH>
+              <TH>Self-reported</TH>
+              <TH>Overtime</TH>
+              <TH>Logs</TH>
+            </TR>
           </THead>
           <tbody>
-            {sheet.days.map((d) => (
-              <TR key={d.date}>
-                <TD>{d.date}</TD>
-                <TD>{d.hours}h</TD>
-                <TD>{d.overtimeHours > 0 ? `${d.overtimeHours}h` : '—'}</TD>
-                <TD>{d.logs || '—'}</TD>
-              </TR>
-            ))}
+            {sheet.days.map((d) => {
+              const clocked = Number((d.hours - d.selfReportedHours).toFixed(2))
+              return (
+                <TR key={d.date}>
+                  <TD>{d.date}</TD>
+                  <TD>{clocked > 0 ? `${clocked}h` : '—'}</TD>
+                  <TD>{d.selfReportedHours > 0 ? `${d.selfReportedHours}h` : '—'}</TD>
+                  <TD>{d.overtimeHours > 0 ? `${d.overtimeHours}h` : '—'}</TD>
+                  <TD>{d.logs || '—'}</TD>
+                </TR>
+              )
+            })}
           </tbody>
         </Table>
       </Card>

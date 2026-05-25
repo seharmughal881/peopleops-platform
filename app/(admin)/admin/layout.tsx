@@ -49,6 +49,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     {
       label: 'Operations',
       items: [
+        { label: 'Leave requests', href: '/admin/leave', icon: <CalendarIcon /> },
         { label: 'Leave policies', href: '/admin/leave-policies', icon: <CalendarIcon /> },
         { label: 'Holidays', href: '/admin/holidays', icon: <CalendarDaysIcon /> },
         { label: 'Shifts', href: '/admin/shifts', icon: <ClockIcon /> },

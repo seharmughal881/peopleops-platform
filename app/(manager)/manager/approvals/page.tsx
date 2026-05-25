@@ -1,16 +1,19 @@
 import { requireUser } from '@/lib/modules/auth'
 import { pendingLeaveApprovalsFor } from '@/lib/modules/leave'
 import { pendingExpenseApprovalsFor } from '@/lib/modules/expenses'
+import { pendingOvertimeApprovalsFor } from '@/lib/modules/overtime-entries'
 import { Card, CardHeader } from '@/lib/ui/Card'
 import { Table, THead, TR, TH, TD, Badge } from '@/lib/ui/Table'
 import { LeaveDecideForm } from './LeaveDecideForm'
 import { ExpenseDecideForm } from './ExpenseDecideForm'
+import { OvertimeDecideForm } from './OvertimeDecideForm'
 
 export default async function ApprovalsPage() {
   const user = await requireUser()
-  const [leaveItems, expenseItems] = await Promise.all([
+  const [leaveItems, expenseItems, overtimeItems] = await Promise.all([
     pendingLeaveApprovalsFor(user.id),
     pendingExpenseApprovalsFor(user.id),
+    pendingOvertimeApprovalsFor(user.id),
   ])
 
   return (
@@ -62,6 +65,30 @@ export default async function ApprovalsPage() {
                 <TD>{expense?.description ?? '—'}</TD>
                 <TD>{expense?.receipts.length ?? 0}</TD>
                 <TD><ExpenseDecideForm approvalId={approval.id} /></TD>
+              </TR>
+            ))}
+          </tbody>
+        </Table>
+      </Card>
+
+      <Card>
+        <CardHeader title="Pending extra-hours approvals" subtitle={`${overtimeItems.length} awaiting your decision`} />
+        <Table>
+          <THead>
+            <TR>
+              <TH>Employee</TH><TH>Work date</TH><TH>Hours</TH><TH>Reason</TH><TH>Submitted</TH><TH>Decision</TH>
+            </TR>
+          </THead>
+          <tbody>
+            {overtimeItems.length === 0 && <TR><TD>No pending extra-hours approvals.</TD></TR>}
+            {overtimeItems.map(({ approval, entry }) => (
+              <TR key={approval.id}>
+                <TD>{entry ? `${entry.employee.firstName} ${entry.employee.lastName}` : '—'}</TD>
+                <TD>{entry && new Date(entry.workDate).toLocaleDateString()}</TD>
+                <TD>{entry && <Badge tone="info">{entry.hours.toFixed(2)}h</Badge>}</TD>
+                <TD>{entry?.reason ?? '—'}</TD>
+                <TD>{entry && new Date(entry.createdAt).toLocaleDateString()}</TD>
+                <TD><OvertimeDecideForm approvalId={approval.id} /></TD>
               </TR>
             ))}
           </tbody>

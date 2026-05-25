@@ -7,7 +7,10 @@
 import { prisma } from '@/lib/db/client'
 
 export { buildEmployeeExport, hardDeleteEmployee } from './gdpr'
-export { deleteEmployeeGdpr } from './actions'
+// NOTE: `deleteEmployeeGdpr` is intentionally NOT re-exported here.
+// It lives in ./actions which imports server-only modules (auth, audit),
+// and the BullMQ worker imports this barrel for `documentsExpiringSoon`.
+// Import it directly: `from '@/lib/modules/compliance/actions'`.
 
 export async function documentsExpiringSoon(days = 30) {
   const cutoff = new Date(Date.now() + days * 24 * 60 * 60 * 1000)

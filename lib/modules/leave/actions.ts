@@ -193,3 +193,119 @@ export async function decideLeaveRequest(formData: FormData) {
   revalidatePath('/manager/approvals')
   return { ok: true, chainComplete: result.chainComplete }
 }
+
+const VALID_LEAVE_TYPES = ['vacation', 'sick', 'personal', 'unpaid'] as const
+const VALID_STATUSES = ['pending', 'approved', 'rejected', 'cancelled'] as const
+
+export async function editLeaveRequest(formData: FormData) {
+  const actor = await requirePermission('leave:approve')
+
+  const id = String(formData.get('id') || '')
+  if (!id) return { error: 'Missing id' }
+
+  const existing = await prisma.leaveRequest.findUnique({
+    where: { id },
+    include: { employee: { select: { id: true, managerId: true, firstName: true, lastName: true, userId: true } } },
+  })
+  if (!existing) return { error: 'Leave request not found' }
+
+  const isAdmin = actor.roles.includes('super_admin') || actor.roles.includes('hr_admin')
+  if (!isAdmin) {
+    if (!actor.employee || existing.employee.managerId !== actor.employee.id) {
+      return { error: 'You can only edit leave for your direct reports' }
+    }
+  }
+
+  const leaveType = String(formData.get('leaveType') || existing.leaveType)
+  const startStr = String(formData.get('startDate') || '')
+  const endStr = String(formData.get('endDate') || '')
+  const reason = formData.get('reason') != null ? String(formData.get('reason')) : existing.reason
+  const status = String(formData.get('status') || existing.status)
+
+  if (!VALID_LEAVE_TYPES.includes(leaveType as typeof VALID_LEAVE_TYPES[number])) {
+    return { error: 'Invalid leave type' }
+  }
+  if (!VALID_STATUSES.includes(status as typeof VALID_STATUSES[number])) {
+    return { error: 'Invalid status' }
+  }
+
+  const startDate = startStr ? new Date(startStr) : existing.startDate
+  const endDate = endStr ? new Date(endStr) : existing.endDate
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+    return { error: 'Invalid date' }
+  }
+  if (endDate < startDate) return { error: 'End date must be on or after start date' }
+
+  const days = daysBetween(startDate, endDate)
+
+  const wasApproved = existing.status === 'approved'
+  const willBeApproved = status === 'approved'
+
+  await prisma.$transaction(async (tx) => {
+    if (wasApproved && existing.leaveType !== 'unpaid') {
+      await tx.leaveBalance.update({
+        where: {
+          employeeId_leaveType_year: {
+            employeeId: existing.employeeId,
+            leaveType: existing.leaveType,
+            year: existing.startDate.getFullYear(),
+          },
+        },
+        data: { balance: { increment: existing.days } },
+      }).catch(() => null)
+    }
+
+    if (willBeApproved && leaveType !== 'unpaid') {
+      await tx.leaveBalance.upsert({
+        where: {
+          employeeId_leaveType_year: {
+            employeeId: existing.employeeId,
+            leaveType,
+            year: startDate.getFullYear(),
+          },
+        },
+        update: { balance: { decrement: days } },
+        create: {
+          employeeId: existing.employeeId,
+          leaveType,
+          year: startDate.getFullYear(),
+          balance: -days,
+        },
+      })
+    }
+
+    await tx.leaveRequest.update({
+      where: { id },
+      data: {
+        leaveType,
+        startDate,
+        endDate,
+        days,
+        reason: reason || null,
+        status,
+        decidedAt: status !== 'pending' ? new Date() : null,
+      },
+    })
+  })
+
+  await recordAudit({
+    userId: actor.id,
+    action: 'leave.edited',
+    entityType: 'LeaveRequest',
+    entityId: id,
+    before: {
+      leaveType: existing.leaveType,
+      startDate: existing.startDate,
+      endDate: existing.endDate,
+      days: existing.days,
+      status: existing.status,
+      reason: existing.reason,
+    },
+    after: { leaveType, startDate, endDate, days, status, reason },
+  })
+
+  revalidatePath('/admin/leave')
+  revalidatePath('/manager/leave')
+  revalidatePath('/leave')
+  return { ok: true }
+}

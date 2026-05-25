@@ -24,6 +24,8 @@ export type JobPayload =
   | { kind: 'leave.approval-reminder'; approvalId: string }
   | { kind: 'leave.year-end-rollover'; year?: number }
   | { kind: 'attendance.daily-missed-check'; date?: string }
+  | { kind: 'attendance.late-check-in-sweep' }
+  | { kind: 'attendance.auto-leave-sweep' }
 
 export function getQueue(): Queue<JobPayload> {
   if (!queue) queue = new Queue<JobPayload>(JOB_QUEUE, { connection: connection() })

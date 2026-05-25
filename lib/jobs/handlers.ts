@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db/client'
 import { notify } from '@/lib/modules/notifications'
 import { documentsExpiringSoon } from '@/lib/modules/compliance'
 import { activeShiftFor, shiftStartDate } from '@/lib/modules/attendance/shift-lookup'
-import { postToSlack, announcementMessage, isSlackConfigured } from '@/lib/modules/integrations/slack'
+import { postToSlack, announcementMessage, isSlackConfigured, notifyLateCheckIn } from '@/lib/modules/integrations/slack'
 import {
   postToTeams,
   teamsAnnouncementMessage,
@@ -238,6 +238,171 @@ async function handleDailyMissedCheck(p: Extract<JobPayload, { kind: 'attendance
   )
 }
 
+/**
+ * Late check-in sweep. Runs every 5 min. For each active employee whose shift
+ * started today, more than 20 minutes ago, and who hasn't clocked in yet, send
+ * a single "you are late" message into the Slack check-in channel.
+ *
+ * Idempotency: we stamp lateAlertedAt on a placeholder AttendanceLog so the
+ * message fires once per shift even if the sweep runs multiple times.
+ */
+const LATE_GRACE_MINUTES = 20
+
+async function handleLateCheckInSweep() {
+  if (!isSlackConfigured()) return
+
+  const now = new Date()
+  const dayStart = new Date(now)
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(dayStart)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+
+  const employees = await prisma.employee.findMany({
+    where: { status: 'active' },
+    select: { id: true, firstName: true, lastName: true },
+  })
+
+  let alerted = 0
+  let skippedAlreadyAlerted = 0
+  let skippedClockedIn = 0
+  let skippedNotLateYet = 0
+  let skippedNoShift = 0
+
+  for (const emp of employees) {
+    const shift = await activeShiftFor(emp.id, now)
+    if (!shift) { skippedNoShift++; continue }
+
+    const shiftStart = shiftStartDate(now, shift)
+    const minutesLate = Math.floor((now.getTime() - shiftStart.getTime()) / 60000)
+    if (minutesLate < LATE_GRACE_MINUTES) { skippedNotLateYet++; continue }
+
+    // Did they clock in today already?
+    const existing = await prisma.attendanceLog.findFirst({
+      where: { employeeId: emp.id, clockIn: { gte: dayStart, lt: dayEnd } },
+      select: { id: true, clockIn: true, lateAlertedAt: true },
+      orderBy: { clockIn: 'asc' },
+    })
+
+    if (existing && existing.clockIn <= now && existing.clockIn >= dayStart) {
+      // Already clocked in (even if late). Don't ping.
+      skippedClockedIn++
+      continue
+    }
+
+    if (existing?.lateAlertedAt) { skippedAlreadyAlerted++; continue }
+
+    // Send the alert. Stamp a placeholder log so the next sweep skips them.
+    const employeeName = `${emp.firstName} ${emp.lastName}`
+    await notifyLateCheckIn({ employeeName, shiftStart, minutesLate, variant: 'reminder' })
+
+    if (existing) {
+      await prisma.attendanceLog.update({
+        where: { id: existing.id },
+        data: { lateAlertedAt: now },
+      })
+    } else {
+      // Placeholder: clockIn=clockOut=shiftStart, status=missed so it shows up
+      // in reports. Will be replaced/updated when the employee actually clocks in.
+      await prisma.attendanceLog.create({
+        data: {
+          employeeId: emp.id,
+          clockIn: shiftStart,
+          clockOut: shiftStart,
+          status: 'missed',
+          source: 'system',
+          lateAlertedAt: now,
+        },
+      })
+    }
+    alerted++
+  }
+
+  console.log(
+    `[attendance.late-check-in-sweep] alerted=${alerted} ` +
+    `already_alerted=${skippedAlreadyAlerted} clocked_in=${skippedClockedIn} ` +
+    `not_late_yet=${skippedNotLateYet} no_shift=${skippedNoShift}`,
+  )
+}
+
+/**
+ * Auto-leave sweep. Runs every 15 min. If an employee is more than 3 hours past
+ * their scheduled shift start and still hasn't clocked in, create a pending
+ * `sick` LeaveRequest for that day so HR/manager can review and edit.
+ *
+ * Idempotency: only one auto-leave per employee per day. Skipped if any
+ * LeaveRequest already covers the day (auto or manual).
+ */
+const AUTO_LEAVE_GRACE_HOURS = 3
+
+async function handleAutoLeaveSweep() {
+  const now = new Date()
+  const dayStart = new Date(now)
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(dayStart)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+
+  const employees = await prisma.employee.findMany({
+    where: { status: 'active' },
+    select: { id: true },
+  })
+
+  let created = 0
+  let skippedClockedIn = 0
+  let skippedHasLeave = 0
+  let skippedNotLateYet = 0
+  let skippedNoShift = 0
+
+  for (const emp of employees) {
+    const shift = await activeShiftFor(emp.id, now)
+    if (!shift) { skippedNoShift++; continue }
+
+    const shiftStart = shiftStartDate(now, shift)
+    const hoursLate = (now.getTime() - shiftStart.getTime()) / (60 * 60 * 1000)
+    if (hoursLate < AUTO_LEAVE_GRACE_HOURS) { skippedNotLateYet++; continue }
+
+    const clockedIn = await prisma.attendanceLog.findFirst({
+      where: {
+        employeeId: emp.id,
+        clockIn: { gte: dayStart, lt: dayEnd },
+        source: { not: 'system' },
+      },
+      select: { id: true },
+    })
+    if (clockedIn) { skippedClockedIn++; continue }
+
+    const existingLeave = await prisma.leaveRequest.findFirst({
+      where: {
+        employeeId: emp.id,
+        startDate: { lte: dayEnd },
+        endDate: { gte: dayStart },
+        status: { in: ['pending', 'approved'] },
+      },
+      select: { id: true },
+    })
+    if (existingLeave) { skippedHasLeave++; continue }
+
+    await prisma.leaveRequest.create({
+      data: {
+        employeeId: emp.id,
+        leaveType: 'sick',
+        startDate: dayStart,
+        endDate: dayStart,
+        days: 1,
+        reason: `Auto: no check-in within ${AUTO_LEAVE_GRACE_HOURS} hours of shift start`,
+        status: 'pending',
+        autoCreated: true,
+      },
+    })
+    created++
+  }
+
+  console.log(
+    `[attendance.auto-leave-sweep] created=${created} ` +
+    `clocked_in=${skippedClockedIn} has_leave=${skippedHasLeave} ` +
+    `not_late_yet=${skippedNotLateYet} no_shift=${skippedNoShift}`,
+  )
+}
+
 export async function processJob(payload: JobPayload): Promise<void> {
   switch (payload.kind) {
     case 'notification.email':
@@ -258,5 +423,9 @@ export async function processJob(payload: JobPayload): Promise<void> {
       return handleYearEndRollover(payload)
     case 'attendance.daily-missed-check':
       return handleDailyMissedCheck(payload)
+    case 'attendance.late-check-in-sweep':
+      return handleLateCheckInSweep()
+    case 'attendance.auto-leave-sweep':
+      return handleAutoLeaveSweep()
   }
 }

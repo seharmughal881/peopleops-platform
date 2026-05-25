@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "AttendanceLog" ADD COLUMN "netHours" DOUBLE PRECISION;
+ALTER TABLE "AttendanceLog" ADD COLUMN "overtimeHours" DOUBLE PRECISION NOT NULL DEFAULT 0;
+ALTER TABLE "AttendanceLog" ADD COLUMN "lateAlertedAt" TIMESTAMP(3);

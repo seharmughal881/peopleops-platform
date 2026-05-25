@@ -4,8 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/db/client'
 import { requireUser } from '@/lib/modules/auth'
 import { recordAudit } from '@/lib/modules/audit'
-import { notifyAttendance, notifyBreak } from '@/lib/modules/integrations/slack'
-import { activeShiftFor, shiftEndDate } from './shift-lookup'
+import { notifyAttendance, notifyBreak, notifyLateCheckIn } from '@/lib/modules/integrations/slack'
+import { computeAttendanceTotals } from './overtime'
+import { activeShiftFor, shiftStartDate } from './shift-lookup'
+
+const LATE_GRACE_MINUTES = 20
 
 export async function clockIn(formData?: FormData) {
   const user = await requireUser()
@@ -16,15 +19,44 @@ export async function clockIn(formData?: FormData) {
   })
   if (open) return { error: 'You are already clocked in.' }
 
-  const log = await prisma.attendanceLog.create({
-    data: {
+  const now = new Date()
+  const dayStart = new Date(now); dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1)
+
+  // The late-check-in sweep may have created a "missed" placeholder for today
+  // (with clockIn=clockOut=shiftStart). Convert it into a real clock-in instead
+  // of creating a duplicate row.
+  const placeholder = await prisma.attendanceLog.findFirst({
+    where: {
       employeeId: user.employee.id,
-      clockIn: new Date(),
-      source: (formData?.get('source') as string) || 'web',
-      geoLat: formData?.get('lat') ? Number(formData.get('lat')) : null,
-      geoLng: formData?.get('lng') ? Number(formData.get('lng')) : null,
+      source: 'system',
+      status: 'missed',
+      clockIn: { gte: dayStart, lt: dayEnd },
     },
+    orderBy: { clockIn: 'asc' },
   })
+
+  const source = (formData?.get('source') as string) || 'web'
+  const geoLat = formData?.get('lat') ? Number(formData.get('lat')) : null
+  const geoLng = formData?.get('lng') ? Number(formData.get('lng')) : null
+
+  const log = placeholder
+    ? await prisma.attendanceLog.update({
+        where: { id: placeholder.id },
+        data: {
+          clockIn: now,
+          clockOut: null,
+          status: 'regular',
+          source,
+          geoLat,
+          geoLng,
+          netHours: null,
+          overtimeHours: 0,
+        },
+      })
+    : await prisma.attendanceLog.create({
+        data: { employeeId: user.employee.id, clockIn: now, source, geoLat, geoLng },
+      })
 
   await recordAudit({
     userId: user.id,
@@ -33,15 +65,34 @@ export async function clockIn(formData?: FormData) {
     entityId: log.id,
   })
 
+  const employeeName = `${user.employee.firstName} ${user.employee.lastName}`
+
   await notifyAttendance({
-    employeeName: `${user.employee.firstName} ${user.employee.lastName}`,
+    employeeName,
     action: 'in',
     at: log.clockIn,
     source: log.source,
   })
 
+  // Late check-in detection at clock-in time. Handles the case where the
+  // background sweep hasn't fired yet (cron is 5-min granular), so a 24-min
+  // late check-in still triggers the Slack alert immediately. Idempotent:
+  // skips if lateAlertedAt is already stamped (sweep beat us to it).
+  const shift = await activeShiftFor(user.employee.id, now)
+  if (shift && !log.lateAlertedAt) {
+    const shiftStart = shiftStartDate(now, shift)
+    const minutesLate = Math.floor((now.getTime() - shiftStart.getTime()) / 60000)
+    if (minutesLate >= LATE_GRACE_MINUTES) {
+      await notifyLateCheckIn({ employeeName, shiftStart, minutesLate, variant: 'late-arrival' })
+      await prisma.attendanceLog.update({
+        where: { id: log.id },
+        data: { lateAlertedAt: now },
+      })
+    }
+  }
+
   revalidatePath('/attendance')
-  return { ok: true, logId: log.id }
+  return { ok: true, logId: log.id, recoveredLatePlaceholder: !!placeholder }
 }
 
 export async function clockOut() {
@@ -63,28 +114,25 @@ export async function clockOut() {
     data: { endedAt: now },
   })
 
-  // Recompute net hours after auto-closing breaks
+  // Recompute totals after auto-closing breaks.
+  // Rules:
+  //  - regular breaks deduct from working time
+  //  - namaz breaks are exempt (counted as working time)
+  //  - overtime = max(0, netHours - 8 - 1hr grace)
   const breaks = await prisma.breakEvent.findMany({
     where: { attendanceLogId: open.id },
   })
-  const breakMs = breaks.reduce((sum, b) => sum + ((b.endedAt ?? now).getTime() - b.startedAt.getTime()), 0)
-  const grossMs = now.getTime() - new Date(open.clockIn).getTime()
-  const netMs = Math.max(0, grossMs - breakMs)
-  const hours = netMs / 3600000
-
-  // Overtime: any time clocked out past the assigned shift end. Falls back to
-  // hours > 8.5 if the employee has no shift assigned for today.
-  const shift = await activeShiftFor(user.employee.id, new Date(open.clockIn))
-  let status: 'regular' | 'overtime' = 'regular'
-  if (shift) {
-    if (now.getTime() > shiftEndDate(new Date(open.clockIn), shift).getTime()) status = 'overtime'
-  } else if (hours > 8.5) {
-    status = 'overtime'
-  }
+  const totals = computeAttendanceTotals(new Date(open.clockIn), now, breaks)
+  const status: 'regular' | 'overtime' = totals.overtimeHours > 0 ? 'overtime' : 'regular'
 
   const updated = await prisma.attendanceLog.update({
     where: { id: open.id },
-    data: { clockOut: now, status },
+    data: {
+      clockOut: now,
+      status,
+      netHours: Number(totals.netHours.toFixed(2)),
+      overtimeHours: Number(totals.overtimeHours.toFixed(2)),
+    },
   })
 
   await recordAudit({
@@ -92,7 +140,12 @@ export async function clockOut() {
     action: 'attendance.clockOut',
     entityType: 'AttendanceLog',
     entityId: updated.id,
-    after: { hours: Number(hours.toFixed(2)), breakMinutes: Math.round(breakMs / 60000) },
+    after: {
+      netHours: Number(totals.netHours.toFixed(2)),
+      overtimeHours: Number(totals.overtimeHours.toFixed(2)),
+      regularBreakMinutes: Math.round(totals.regularBreakMs / 60000),
+      namazBreakMinutes: Math.round(totals.namazBreakMs / 60000),
+    },
   })
 
   await notifyAttendance({
@@ -100,14 +153,20 @@ export async function clockOut() {
     action: 'out',
     at: now,
     source: open.source,
-    hours: Number(hours.toFixed(2)),
+    hours: Number(totals.netHours.toFixed(2)),
   })
 
   revalidatePath('/attendance')
-  return { ok: true, hours: Number(hours.toFixed(2)) }
+  return {
+    ok: true,
+    hours: Number(totals.netHours.toFixed(2)),
+    overtimeHours: Number(totals.overtimeHours.toFixed(2)),
+  }
 }
 
-export async function startBreak() {
+export type BreakType = 'regular' | 'namaz'
+
+export async function startBreak(type: BreakType = 'regular') {
   const user = await requireUser()
   if (!user.employee) throw new Error('No employee record')
 
@@ -123,19 +182,21 @@ export async function startBreak() {
   if (activeBreak) return { error: 'A break is already in progress.' }
 
   const ev = await prisma.breakEvent.create({
-    data: { attendanceLogId: open.id },
+    data: { attendanceLogId: open.id, type },
   })
   await recordAudit({
     userId: user.id,
     action: 'attendance.breakStart',
     entityType: 'BreakEvent',
     entityId: ev.id,
+    after: { type },
   })
 
   await notifyBreak({
     employeeName: `${user.employee.firstName} ${user.employee.lastName}`,
     action: 'start',
     at: ev.startedAt,
+    type,
   })
 
   revalidatePath('/attendance')
@@ -174,6 +235,7 @@ export async function endBreak() {
       action: 'end',
       startedAt: ended.startedAt,
       endedAt: ended.endedAt,
+      type: (ended.type as BreakType) ?? 'regular',
     })
   }
 

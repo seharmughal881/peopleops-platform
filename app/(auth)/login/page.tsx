@@ -105,11 +105,11 @@ export default async function LoginPage({
           />
         </div>
 
-        <div className="mt-4 rounded-md border border-dashed border-border bg-surface-muted/80 px-4 py-3 text-xs text-foreground-muted backdrop-blur-sm">
+        {/* <div className="mt-4 rounded-md border border-dashed border-border bg-surface-muted/80 px-4 py-3 text-xs text-foreground-muted backdrop-blur-sm">
           <p className="mb-1 font-semibold text-foreground">Dev credentials</p>
           <p className="font-mono">admin@example.com / admin123</p>
           <p className="font-mono">employee@example.com / employee123</p>
-        </div>
+        </div> */}
       </div>
     </div>
   )

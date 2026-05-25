@@ -35,3 +35,25 @@ export async function pendingLeaveApprovalsFor(approverId: string) {
 export async function listHolidays(country = 'US') {
   return prisma.holiday.findMany({ where: { country }, orderBy: { date: 'asc' } })
 }
+
+export interface ListLeaveRequestsOpts {
+  status?: string
+  leaveType?: string
+  autoOnly?: boolean
+  employeeIds?: string[]
+  limit?: number
+}
+
+export async function listLeaveRequests(opts: ListLeaveRequestsOpts = {}) {
+  return prisma.leaveRequest.findMany({
+    where: {
+      ...(opts.status ? { status: opts.status } : {}),
+      ...(opts.leaveType ? { leaveType: opts.leaveType } : {}),
+      ...(opts.autoOnly ? { autoCreated: true } : {}),
+      ...(opts.employeeIds ? { employeeId: { in: opts.employeeIds } } : {}),
+    },
+    include: { employee: { select: { id: true, firstName: true, lastName: true, employeeCode: true } } },
+    orderBy: [{ createdAt: 'desc' }],
+    take: opts.limit ?? 200,
+  })
+}

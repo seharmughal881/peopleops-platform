@@ -84,21 +84,28 @@ export async function notifyAttendance(input: AttendanceMessageInput): Promise<v
   }
 }
 
+export type BreakType = 'regular' | 'namaz'
+
 export type BreakMessageInput =
-  | { employeeName: string; action: 'start'; at: Date }
-  | { employeeName: string; action: 'end'; startedAt: Date; endedAt: Date }
+  | { employeeName: string; action: 'start'; at: Date; type?: BreakType }
+  | { employeeName: string; action: 'end'; startedAt: Date; endedAt: Date; type?: BreakType }
 
 function formatTime(d: Date): string {
   return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
 }
 
+function breakLabel(type: BreakType | undefined): { emoji: string; noun: string } {
+  return type === 'namaz' ? { emoji: ':mosque:', noun: 'namaz break' } : { emoji: ':coffee:', noun: 'break' }
+}
+
 export function breakMessage(input: BreakMessageInput): SlackMessage {
+  const { emoji, noun } = breakLabel(input.type)
   if (input.action === 'start') {
     const time = formatTime(input.at)
-    const headerText = `:coffee: *${input.employeeName}* started a break`
+    const headerText = `${emoji} *${input.employeeName}* started a ${noun}`
     const detailText = `at *${time}*`
     return {
-      text: `${input.employeeName} started a break at ${time}`,
+      text: `${input.employeeName} started a ${noun} at ${time}`,
       blocks: [
         { type: 'section', text: { type: 'mrkdwn', text: headerText } },
         { type: 'section', text: { type: 'mrkdwn', text: detailText } },
@@ -108,10 +115,10 @@ export function breakMessage(input: BreakMessageInput): SlackMessage {
   const start = formatTime(input.startedAt)
   const end = formatTime(input.endedAt)
   const durationMin = Math.max(0, Math.round((input.endedAt.getTime() - input.startedAt.getTime()) / 60000))
-  const headerText = `:arrow_backward: *${input.employeeName}* ended break`
+  const headerText = `:arrow_backward: *${input.employeeName}* ended ${noun}`
   const detailText = `*${start}* → *${end}*  •  *${durationMin} min*`
   return {
-    text: `${input.employeeName} ended break (${start} → ${end}, ${durationMin} min)`,
+    text: `${input.employeeName} ended ${noun} (${start} → ${end}, ${durationMin} min)`,
     blocks: [
       { type: 'section', text: { type: 'mrkdwn', text: headerText } },
       { type: 'section', text: { type: 'mrkdwn', text: detailText } },
@@ -126,5 +133,61 @@ export async function notifyBreak(input: BreakMessageInput): Promise<void> {
     if (!result.ok) console.warn(`[slack:break] ${result.error}`)
   } catch (e) {
     console.warn(`[slack:break] ${e instanceof Error ? e.message : 'unknown error'}`)
+  }
+}
+
+export type LateCheckInVariant =
+  | 'reminder'      // sent by the sweep — employee hasn't clocked in yet
+  | 'late-arrival'  // sent at clock-in time — employee did clock in, but late
+
+export interface LateCheckInMessageInput {
+  employeeName: string
+  shiftStart: Date  // e.g. 11:00 AM today
+  minutesLate: number
+  variant: LateCheckInVariant
+}
+
+export function lateCheckInMessage(input: LateCheckInMessageInput): SlackMessage {
+  const { employeeName, shiftStart, minutesLate, variant } = input
+  const shiftTime = shiftStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
+
+  if (variant === 'reminder') {
+    // Employee hasn't clocked in yet — gentle "where are you?" nudge.
+    const headerText = `:warning: *@${employeeName}* — Where are you?`
+    const bodyText = [
+      `Your shift started at *${shiftTime}*, it's been *${minutesLate} minutes* and we haven't seen you yet.`,
+      `Please check in soon or let your manager know if there's a delay.`,
+    ].join('\n')
+    return {
+      text: `@${employeeName} hasn't checked in yet — shift started at ${shiftTime} (${minutesLate} min ago).`,
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text: headerText } },
+        { type: 'section', text: { type: 'mrkdwn', text: bodyText } },
+      ],
+    }
+  }
+
+  // variant === 'late-arrival' — employee just clocked in, but past the grace window.
+  const headerText = `:clock3: *@${employeeName}* — Late check-in noted`
+  const bodyText = [
+    `Checked in *${minutesLate} minutes* after shift start (*${shiftTime}*).`,
+    `Hope everything's okay — please share the reason with your manager when you get a chance.`,
+  ].join('\n')
+  return {
+    text: `@${employeeName} clocked in ${minutesLate} min late (shift started ${shiftTime}).`,
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: headerText } },
+      { type: 'section', text: { type: 'mrkdwn', text: bodyText } },
+    ],
+  }
+}
+
+export async function notifyLateCheckIn(input: LateCheckInMessageInput): Promise<void> {
+  if (!isSlackConfigured()) return
+  try {
+    const result = await postToSlack(lateCheckInMessage(input))
+    if (!result.ok) console.warn(`[slack:late-check-in] ${result.error}`)
+  } catch (e) {
+    console.warn(`[slack:late-check-in] ${e instanceof Error ? e.message : 'unknown error'}`)
   }
 }
