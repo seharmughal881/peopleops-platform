@@ -4,6 +4,7 @@ import { Card, CardHeader } from '@/lib/ui/Card'
 import { Badge } from '@/lib/ui/Table'
 import { PageHeader } from '@/lib/ui/PageHeader'
 import { MfaPanel } from './MfaPanel'
+import { ChangePasswordForm } from '../ChangePasswordForm'
 
 export default async function SecurityPage() {
   const user = await requireUser()
@@ -12,6 +13,14 @@ export default async function SecurityPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <PageHeader title="Security" description="Manage account security settings." />
+
+      <Card>
+        <CardHeader
+          title="Change password"
+          subtitle="Update the password used to sign in to your account."
+        />
+        <ChangePasswordForm />
+      </Card>
 
       <Card>
         <CardHeader

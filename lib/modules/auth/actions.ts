@@ -6,8 +6,8 @@ import { headers } from 'next/headers'
 import { prisma } from '@/lib/db/client'
 import { recordAudit } from '@/lib/modules/audit'
 import { createSession, destroySession } from './session'
-import { loadUserPermissions } from './dal'
-import { LoginSchema } from './schemas'
+import { loadUserPermissions, requireUser } from './dal'
+import { ChangePasswordSchema, LoginSchema } from './schemas'
 import { verifyChallenge } from './mfa'
 import { check, clearBucket } from './rate-limit'
 
@@ -102,6 +102,77 @@ export async function loginAction(_prev: LoginState, formData: FormData): Promis
 export async function logoutAction() {
   await destroySession()
   redirect('/login')
+}
+
+export type ChangePasswordState = {
+  ok?: true
+  error?: string
+  fieldErrors?: Record<string, string[] | undefined>
+} | undefined
+
+const CHANGE_PW_MAX_PER_WINDOW = 5
+const CHANGE_PW_WINDOW_SECONDS = 60 * 10 // 10 minutes
+
+export async function changePasswordAction(
+  _prev: ChangePasswordState,
+  formData: FormData,
+): Promise<ChangePasswordState> {
+  const user = await requireUser()
+
+  const parsed = ChangePasswordSchema.safeParse({
+    currentPassword: formData.get('currentPassword'),
+    newPassword: formData.get('newPassword'),
+    confirmPassword: formData.get('confirmPassword'),
+  })
+  if (!parsed.success) {
+    return { error: 'Validation failed', fieldErrors: parsed.error.flatten().fieldErrors }
+  }
+
+  const ip = await clientIp()
+  const bucket = `change-pw:user:${user.id}`
+  const limit = await check(bucket, CHANGE_PW_MAX_PER_WINDOW, CHANGE_PW_WINDOW_SECONDS)
+  if (!limit.allowed) {
+    return {
+      error: `Too many attempts. Try again in ${Math.ceil(limit.resetSeconds / 60)} minute(s).`,
+    }
+  }
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { id: true, hashedPassword: true },
+  })
+  if (!dbUser) {
+    return { error: 'Account not found' }
+  }
+
+  const currentOk = await bcrypt.compare(parsed.data.currentPassword, dbUser.hashedPassword)
+  if (!currentOk) {
+    await recordAudit({
+      userId: user.id,
+      action: 'auth.password.change.failed',
+      entityType: 'User',
+      entityId: user.id,
+      after: { ip },
+    })
+    return { fieldErrors: { currentPassword: ['Current password is incorrect'] } }
+  }
+
+  const newHashed = await bcrypt.hash(parsed.data.newPassword, 10)
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { hashedPassword: newHashed },
+  })
+
+  await clearBucket(bucket)
+  await recordAudit({
+    userId: user.id,
+    action: 'auth.password.change.success',
+    entityType: 'User',
+    entityId: user.id,
+    after: { ip },
+  })
+
+  return { ok: true }
 }
 
 function landingForRoles(roles: string[]): string {

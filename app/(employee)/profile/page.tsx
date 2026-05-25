@@ -8,6 +8,7 @@ import { ProfileForm } from './ProfileForm'
 import { EmergencyContactsForm } from './EmergencyContactsForm'
 import { SkillsManager } from './SkillsManager'
 import { DiversityForm } from './DiversityForm'
+import { ChangePasswordForm } from './ChangePasswordForm'
 
 export default async function ProfilePage() {
   const user = await requireUser()
@@ -54,6 +55,14 @@ export default async function ProfilePage() {
             address: employee.profile?.address ?? '',
           }}
         />
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Change password"
+          subtitle="Update the password used to sign in to your account"
+        />
+        <ChangePasswordForm />
       </Card>
 
       <Card>
