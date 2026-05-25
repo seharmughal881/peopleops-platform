@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db/client'
 import { notify } from '@/lib/modules/notifications'
 import { documentsExpiringSoon } from '@/lib/modules/compliance'
 import { activeShiftFor, shiftStartDate } from '@/lib/modules/attendance/shift-lookup'
-import { postToSlack, announcementMessage, isSlackConfigured, notifyLateCheckIn } from '@/lib/modules/integrations/slack'
+import { postToSlack, announcementMessage, isSlackConfigured, isSlackDmConfigured, notifyLateCheckIn } from '@/lib/modules/integrations/slack'
 import {
   postToTeams,
   teamsAnnouncementMessage,
@@ -249,7 +249,7 @@ async function handleDailyMissedCheck(p: Extract<JobPayload, { kind: 'attendance
 const LATE_GRACE_MINUTES = 20
 
 async function handleLateCheckInSweep() {
-  if (!isSlackConfigured()) return
+  if (!isSlackDmConfigured()) return
 
   const now = new Date()
   const dayStart = new Date(now)
@@ -259,7 +259,7 @@ async function handleLateCheckInSweep() {
 
   const employees = await prisma.employee.findMany({
     where: { status: 'active' },
-    select: { id: true, firstName: true, lastName: true },
+    select: { id: true, user: { select: { email: true } } },
   })
 
   let alerted = 0
@@ -291,9 +291,8 @@ async function handleLateCheckInSweep() {
 
     if (existing?.lateAlertedAt) { skippedAlreadyAlerted++; continue }
 
-    // Send the alert. Stamp a placeholder log so the next sweep skips them.
-    const employeeName = `${emp.firstName} ${emp.lastName}`
-    await notifyLateCheckIn({ employeeName, shiftStart, minutesLate, variant: 'reminder' })
+    // Send the DM. Stamp a placeholder log so the next sweep skips them.
+    await notifyLateCheckIn({ employeeEmail: emp.user.email, shiftStart, minutesLate, variant: 'reminder' })
 
     if (existing) {
       await prisma.attendanceLog.update({

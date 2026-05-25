@@ -76,14 +76,14 @@ export async function clockIn(formData?: FormData) {
 
   // Late check-in detection at clock-in time. Handles the case where the
   // background sweep hasn't fired yet (cron is 5-min granular), so a 24-min
-  // late check-in still triggers the Slack alert immediately. Idempotent:
+  // late check-in still triggers the Slack DM immediately. Idempotent:
   // skips if lateAlertedAt is already stamped (sweep beat us to it).
   const shift = await activeShiftFor(user.employee.id, now)
   if (shift && !log.lateAlertedAt) {
     const shiftStart = shiftStartDate(now, shift)
     const minutesLate = Math.floor((now.getTime() - shiftStart.getTime()) / 60000)
     if (minutesLate >= LATE_GRACE_MINUTES) {
-      await notifyLateCheckIn({ employeeName, shiftStart, minutesLate, variant: 'late-arrival' })
+      await notifyLateCheckIn({ employeeEmail: user.email, shiftStart, minutesLate, variant: 'late-arrival' })
       await prisma.attendanceLog.update({
         where: { id: log.id },
         data: { lateAlertedAt: now },

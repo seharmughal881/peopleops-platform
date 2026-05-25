@@ -12,8 +12,16 @@ export function slackWebhookUrl(): string | undefined {
   return process.env.SLACK_WEBHOOK_URL
 }
 
+export function slackBotToken(): string | undefined {
+  return process.env.SLACK_BOT_TOKEN
+}
+
 export function isSlackConfigured(): boolean {
   return Boolean(slackWebhookUrl())
+}
+
+export function isSlackDmConfigured(): boolean {
+  return Boolean(slackBotToken())
 }
 
 export async function postToSlack(msg: SlackMessage): Promise<{ ok: boolean; error?: string }> {
@@ -34,6 +42,46 @@ export async function postToSlack(msg: SlackMessage): Promise<{ ok: boolean; err
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'unknown error' }
   }
+}
+
+interface SlackWebApiResponse {
+  ok: boolean
+  error?: string
+  user?: { id: string }
+}
+
+async function callSlackApi(method: string, body: Record<string, unknown>): Promise<SlackWebApiResponse> {
+  const token = slackBotToken()
+  if (!token) return { ok: false, error: 'SLACK_BOT_TOKEN not configured' }
+  const res = await fetch(`https://slack.com/api/${method}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) return { ok: false, error: `Slack ${method} HTTP ${res.status}` }
+  return (await res.json()) as SlackWebApiResponse
+}
+
+export async function lookupSlackUserIdByEmail(email: string): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
+  // GET-style query: users.lookupByEmail expects form-encoded params, not JSON
+  const token = slackBotToken()
+  if (!token) return { ok: false, error: 'SLACK_BOT_TOKEN not configured' }
+  const res = await fetch(`https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(email)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) return { ok: false, error: `Slack users.lookupByEmail HTTP ${res.status}` }
+  const data = (await res.json()) as SlackWebApiResponse
+  if (!data.ok || !data.user) return { ok: false, error: data.error ?? 'unknown error' }
+  return { ok: true, userId: data.user.id }
+}
+
+export async function postSlackDm(userId: string, msg: SlackMessage): Promise<{ ok: boolean; error?: string }> {
+  const data = await callSlackApi('chat.postMessage', { channel: userId, ...msg })
+  if (!data.ok) return { ok: false, error: data.error ?? 'unknown error' }
+  return { ok: true }
 }
 
 export function announcementMessage(title: string, body: string, authorName?: string): SlackMessage {
@@ -141,25 +189,24 @@ export type LateCheckInVariant =
   | 'late-arrival'  // sent at clock-in time — employee did clock in, but late
 
 export interface LateCheckInMessageInput {
-  employeeName: string
   shiftStart: Date  // e.g. 11:00 AM today
   minutesLate: number
   variant: LateCheckInVariant
 }
 
 export function lateCheckInMessage(input: LateCheckInMessageInput): SlackMessage {
-  const { employeeName, shiftStart, minutesLate, variant } = input
+  const { shiftStart, minutesLate, variant } = input
   const shiftTime = shiftStart.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
 
   if (variant === 'reminder') {
-    // Employee hasn't clocked in yet — gentle "where are you?" nudge.
-    const headerText = `:warning: *@${employeeName}* — Where are you?`
+    // Employee hasn't clocked in yet — gentle "where are you?" nudge, DM'd to them.
+    const headerText = `:warning: You're late`
     const bodyText = [
-      `Your shift started at *${shiftTime}*, it's been *${minutesLate} minutes* and we haven't seen you yet.`,
-      `Please check in soon or let your manager know if there's a delay.`,
+      `Your shift started at *${shiftTime}* — it's been *${minutesLate} minutes* and you haven't checked in yet.`,
+      `Please check in soon or let your manager know the reason for the delay.`,
     ].join('\n')
     return {
-      text: `@${employeeName} hasn't checked in yet — shift started at ${shiftTime} (${minutesLate} min ago).`,
+      text: `You haven't checked in yet — shift started at ${shiftTime} (${minutesLate} min ago).`,
       blocks: [
         { type: 'section', text: { type: 'mrkdwn', text: headerText } },
         { type: 'section', text: { type: 'mrkdwn', text: bodyText } },
@@ -168,13 +215,13 @@ export function lateCheckInMessage(input: LateCheckInMessageInput): SlackMessage
   }
 
   // variant === 'late-arrival' — employee just clocked in, but past the grace window.
-  const headerText = `:clock3: *@${employeeName}* — Late check-in noted`
+  const headerText = `:clock3: Late check-in noted`
   const bodyText = [
-    `Checked in *${minutesLate} minutes* after shift start (*${shiftTime}*).`,
+    `You checked in *${minutesLate} minutes* after your shift start (*${shiftTime}*).`,
     `Hope everything's okay — please share the reason with your manager when you get a chance.`,
   ].join('\n')
   return {
-    text: `@${employeeName} clocked in ${minutesLate} min late (shift started ${shiftTime}).`,
+    text: `You clocked in ${minutesLate} min late (shift started ${shiftTime}).`,
     blocks: [
       { type: 'section', text: { type: 'mrkdwn', text: headerText } },
       { type: 'section', text: { type: 'mrkdwn', text: bodyText } },
@@ -182,11 +229,23 @@ export function lateCheckInMessage(input: LateCheckInMessageInput): SlackMessage
   }
 }
 
-export async function notifyLateCheckIn(input: LateCheckInMessageInput): Promise<void> {
-  if (!isSlackConfigured()) return
+export interface NotifyLateCheckInInput extends LateCheckInMessageInput {
+  employeeEmail: string  // used to look up the Slack user for the DM
+}
+
+export async function notifyLateCheckIn(input: NotifyLateCheckInInput): Promise<void> {
+  if (!isSlackDmConfigured()) {
+    console.log(`[slack:late-check-in:no-bot-token] email=${input.employeeEmail}`)
+    return
+  }
   try {
-    const result = await postToSlack(lateCheckInMessage(input))
-    if (!result.ok) console.warn(`[slack:late-check-in] ${result.error}`)
+    const lookup = await lookupSlackUserIdByEmail(input.employeeEmail)
+    if (!lookup.ok) {
+      console.warn(`[slack:late-check-in:lookup-failed] email=${input.employeeEmail} error=${lookup.error}`)
+      return
+    }
+    const result = await postSlackDm(lookup.userId, lateCheckInMessage(input))
+    if (!result.ok) console.warn(`[slack:late-check-in:dm-failed] ${result.error}`)
   } catch (e) {
     console.warn(`[slack:late-check-in] ${e instanceof Error ? e.message : 'unknown error'}`)
   }
