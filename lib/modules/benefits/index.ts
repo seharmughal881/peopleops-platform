@@ -2,6 +2,7 @@ export {
   createPlan,
   updatePlan,
   togglePlanActive,
+  deletePlan,
   enroll,
   waivePlan,
   terminateEnrollment,

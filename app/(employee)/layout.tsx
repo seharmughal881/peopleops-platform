@@ -11,7 +11,6 @@ import {
   ReceiptIcon,
   BarChartIcon,
   WalletIcon,
-  UsersIcon,
   ShieldIcon,
   LaptopIcon,
   HeartIcon,
@@ -58,12 +57,6 @@ export default async function EmployeeLayout({ children }: { children: ReactNode
     },
   ]
 
-  if (user.permissions.includes('leave:approve') || user.roles.includes('manager')) {
-    groups.push({
-      label: 'Team',
-      items: [{ label: 'Manager portal', href: '/manager', icon: <UsersIcon /> }],
-    })
-  }
   if (user.roles.includes('super_admin') || user.roles.includes('hr_admin')) {
     groups.push({
       label: 'Admin',

@@ -117,9 +117,15 @@ export async function dailyAttendanceRoster(forDate: Date = new Date()): Promise
   dayStart.setHours(0, 0, 0, 0)
   const dayEnd = new Date(dayStart)
   dayEnd.setDate(dayEnd.getDate() + 1)
+  return attendanceRosterRange(dayStart, dayEnd)
+}
 
+export async function attendanceRosterRange(
+  start: Date,
+  end: Date,
+): Promise<DailyAttendanceRow[]> {
   const logs = await prisma.attendanceLog.findMany({
-    where: { clockIn: { gte: dayStart, lt: dayEnd } },
+    where: { clockIn: { gte: start, lt: end } },
     include: {
       breaks: { select: { startedAt: true, endedAt: true, type: true } },
       employee: {
@@ -140,9 +146,9 @@ export async function dailyAttendanceRoster(forDate: Date = new Date()): Promise
     let namazMs = 0
     let openBreak = false
     for (const b of l.breaks) {
-      const end = b.endedAt ?? new Date()
+      const breakEnd = b.endedAt ?? new Date()
       if (!b.endedAt) openBreak = true
-      const ms = Math.max(0, end.getTime() - b.startedAt.getTime())
+      const ms = Math.max(0, breakEnd.getTime() - b.startedAt.getTime())
       if (b.type === 'namaz') namazMs += ms
       else regularMs += ms
     }
@@ -162,6 +168,58 @@ export async function dailyAttendanceRoster(forDate: Date = new Date()): Promise
       openBreak,
     }
   })
+}
+
+export type EmployeeAttendanceSummary = {
+  employeeId: string
+  employeeCode: string
+  name: string
+  department: string | null
+  daysPresent: number
+  lateDays: number
+  totalMinutesLate: number
+  totalHours: number
+  overtimeHours: number
+  missedDays: number
+}
+
+export function summarizeRosterByEmployee(
+  rows: DailyAttendanceRow[],
+): EmployeeAttendanceSummary[] {
+  const map = new Map<string, EmployeeAttendanceSummary>()
+  for (const r of rows) {
+    const cur = map.get(r.employeeId) ?? {
+      employeeId: r.employeeId,
+      employeeCode: r.employeeCode,
+      name: r.name,
+      department: r.department,
+      daysPresent: 0,
+      lateDays: 0,
+      totalMinutesLate: 0,
+      totalHours: 0,
+      overtimeHours: 0,
+      missedDays: 0,
+    }
+    cur.daysPresent += 1
+    if (r.isLate) {
+      cur.lateDays += 1
+      const lateBy =
+        (r.clockIn.getHours() - LATE_HOUR) * 60 +
+        (r.clockIn.getMinutes() - LATE_MINUTE)
+      cur.totalMinutesLate += Math.max(0, lateBy)
+    }
+    if (r.netHours != null) cur.totalHours += r.netHours
+    cur.overtimeHours += r.overtimeHours
+    if (r.status === 'missed') cur.missedDays += 1
+    map.set(r.employeeId, cur)
+  }
+  return [...map.values()]
+    .map((s) => ({
+      ...s,
+      totalHours: Math.round(s.totalHours * 10) / 10,
+      overtimeHours: Math.round(s.overtimeHours * 10) / 10,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
 }
 
 export type MonthlyLateRow = {

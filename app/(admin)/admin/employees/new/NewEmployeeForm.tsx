@@ -70,6 +70,14 @@ export function NewEmployeeForm({ departments, managers }: Props) {
             {managers.map((m) => <option key={m.id} value={m.id}>{m.firstName} {m.lastName}</option>)}
           </Select>
         </Field>
+        <Field label="Role" required error={fieldError(state, 'role')}>
+          <Select name="role" defaultValue="employee" invalid={Boolean(fieldError(state, 'role'))}>
+            <option value="employee">Employee</option>
+            <option value="manager">Manager</option>
+            <option value="hr_admin">HR</option>
+            <option value="super_admin">Admin</option>
+          </Select>
+        </Field>
         <Field label="Temporary password" required error={fieldError(state, 'tempPassword')}>
           <Input
             name="tempPassword"
@@ -83,7 +91,9 @@ export function NewEmployeeForm({ departments, managers }: Props) {
       {state?.error && !state.fieldErrors && (
         <p className="text-sm text-rose-600" role="alert">{state.error}</p>
       )}
-      <Button type="submit" disabled={pending}>{pending ? 'Creating…' : 'Create employee'}</Button>
+      <div className="mt-2 flex justify-end border-t border-slate-200 pt-4">
+        <Button type="submit" disabled={pending}>{pending ? 'Creating…' : 'Create employee'}</Button>
+      </div>
     </Form>
   )
 }

@@ -1,5 +1,8 @@
 import { z } from 'zod'
 
+export const ASSIGNABLE_ROLES = ['employee', 'manager', 'hr_admin', 'super_admin'] as const
+export type AssignableRole = (typeof ASSIGNABLE_ROLES)[number]
+
 export const CreateEmployeeSchema = z.object({
   email: z.string().email().trim().toLowerCase(),
   firstName: z.string().min(1).trim(),
@@ -10,6 +13,7 @@ export const CreateEmployeeSchema = z.object({
   departmentId: z.string().optional(),
   managerId: z.string().optional(),
   tempPassword: z.string().min(8),
+  role: z.enum(ASSIGNABLE_ROLES).default('employee'),
 })
 
 export const UpdateProfileSchema = z.object({

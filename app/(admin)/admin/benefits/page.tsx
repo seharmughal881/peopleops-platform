@@ -2,7 +2,9 @@ import Link from 'next/link'
 import { listPlans, enrollmentSummary } from '@/lib/modules/benefits'
 import { Card, CardHeader, Stat } from '@/lib/ui/Card'
 import { Table, THead, TR, TH, TD, Badge } from '@/lib/ui/Table'
+import { Button } from '@/lib/ui/Button'
 import { NewPlanForm } from './NewPlanForm'
+import { DeletePlanButton } from './DeletePlanButton'
 
 export default async function AdminBenefitsPage() {
   const [plans, summary] = await Promise.all([listPlans(), enrollmentSummary()])
@@ -32,6 +34,7 @@ export default async function AdminBenefitsPage() {
                   <TH>Employer share</TH>
                   <TH>Enrolled</TH>
                   <TH>Status</TH>
+                  <TH>Actions</TH>
                 </TR>
               </THead>
               <tbody>
@@ -53,6 +56,18 @@ export default async function AdminBenefitsPage() {
                       <Badge tone={p.active ? 'success' : 'neutral'}>
                         {p.active ? 'active' : 'archived'}
                       </Badge>
+                    </TD>
+                    <TD>
+                      <div className="flex items-start gap-2">
+                        <Link href={`/admin/benefits/${p.id}`}>
+                          <Button variant="outline" size="sm">Edit</Button>
+                        </Link>
+                        <DeletePlanButton
+                          id={p.id}
+                          name={p.name}
+                          enrollments={p._count.enrollments}
+                        />
+                      </div>
                     </TD>
                   </TR>
                 ))}

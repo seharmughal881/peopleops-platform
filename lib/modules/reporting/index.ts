@@ -32,10 +32,13 @@ export {
   topLateComers,
   topAbsentees,
   dailyAttendanceRoster,
+  attendanceRosterRange,
+  summarizeRosterByEmployee,
   monthlyAttendanceInsights,
   monthlyLateCheckIns,
   monthlyOvertimeLogs,
   type DailyAttendanceRow,
+  type EmployeeAttendanceSummary,
   type MonthlyLateRow,
   type MonthlyOvertimeRow,
 } from './attendance'

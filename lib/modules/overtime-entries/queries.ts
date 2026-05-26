@@ -36,3 +36,17 @@ export async function pendingOvertimeApprovalsFor(approverId: string) {
   const entryById = new Map(entries.map((e) => [e.id, e]))
   return approvals.map((a) => ({ approval: a, entry: entryById.get(a.entityId) }))
 }
+
+export async function pendingOvertimeApprovalsAll() {
+  const approvals = await prisma.approval.findMany({
+    where: { status: 'pending', entityType: 'OvertimeEntry' },
+    orderBy: { createdAt: 'desc' },
+  })
+  const ids = approvals.map((a) => a.entityId)
+  const entries = await prisma.overtimeEntry.findMany({
+    where: { id: { in: ids } },
+    include: { employee: true },
+  })
+  const entryById = new Map(entries.map((e) => [e.id, e]))
+  return approvals.map((a) => ({ approval: a, entry: entryById.get(a.entityId) }))
+}

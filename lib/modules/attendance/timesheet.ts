@@ -129,3 +129,24 @@ export async function teamTimesheetSummary(managerEmployeeId: string, weekStart?
   )
   return sheets
 }
+
+export async function orgTimesheetSummary(weekStart?: Date) {
+  const employees = await prisma.employee.findMany({
+    where: { status: 'active' },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      employeeCode: true,
+      department: { select: { name: true } },
+    },
+    orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+  })
+  const sheets = await Promise.all(
+    employees.map(async (e) => ({
+      employee: e,
+      sheet: await weeklyTimesheet(e.id, weekStart),
+    })),
+  )
+  return sheets
+}

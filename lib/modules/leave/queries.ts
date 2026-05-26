@@ -32,6 +32,20 @@ export async function pendingLeaveApprovalsFor(approverId: string) {
   return approvals.map((a) => ({ approval: a, request: requestById.get(a.entityId) }))
 }
 
+export async function pendingLeaveApprovalsAll() {
+  const approvals = await prisma.approval.findMany({
+    where: { status: 'pending', entityType: 'LeaveRequest' },
+    orderBy: { createdAt: 'desc' },
+  })
+  const ids = approvals.map((a) => a.entityId)
+  const requests = await prisma.leaveRequest.findMany({
+    where: { id: { in: ids } },
+    include: { employee: true },
+  })
+  const requestById = new Map(requests.map((r) => [r.id, r]))
+  return approvals.map((a) => ({ approval: a, request: requestById.get(a.entityId) }))
+}
+
 export async function listHolidays(country = 'US') {
   return prisma.holiday.findMany({ where: { country }, orderBy: { date: 'asc' } })
 }

@@ -20,6 +20,7 @@ export async function createEmployee(formData: FormData) {
     departmentId: formData.get('departmentId') || undefined,
     managerId: formData.get('managerId') || undefined,
     tempPassword: formData.get('tempPassword'),
+    role: formData.get('role') || undefined,
   })
   if (!parsed.success) {
     return { error: 'Validation failed', fieldErrors: parsed.error.flatten().fieldErrors }
@@ -64,9 +65,9 @@ export async function createEmployee(formData: FormData) {
         },
       })
 
-      const empRole = await tx.role.findUnique({ where: { name: 'employee' } })
-      if (empRole) {
-        await tx.userRole.create({ data: { userId: user.id, roleId: empRole.id } })
+      const assignedRole = await tx.role.findUnique({ where: { name: data.role } })
+      if (assignedRole) {
+        await tx.userRole.create({ data: { userId: user.id, roleId: assignedRole.id } })
       }
 
       return emp
@@ -88,7 +89,7 @@ export async function createEmployee(formData: FormData) {
     action: 'employee.created',
     entityType: 'Employee',
     entityId: employee.id,
-    after: { email: data.email, employeeCode: data.employeeCode },
+    after: { email: data.email, employeeCode: data.employeeCode, role: data.role },
   })
 
   revalidatePath('/admin/employees')

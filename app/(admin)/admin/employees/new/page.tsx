@@ -13,7 +13,7 @@ export default async function NewEmployeePage() {
   return (
     <div className="mx-auto max-w-2xl">
       <Card>
-        <CardHeader title="Add employee" subtitle="Creates a user + employee record and assigns the 'employee' role" />
+        <CardHeader title="Add employee" subtitle="Creates a user + employee record and assigns the selected role" />
         <NewEmployeeForm departments={departments} managers={managers} />
       </Card>
     </div>

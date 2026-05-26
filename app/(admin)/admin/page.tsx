@@ -138,9 +138,17 @@ export default async function AdminHome() {
             day: 'numeric',
           })}
           action={
-            <span className="text-xs text-foreground-muted">
-              {roster.length} {roster.length === 1 ? 'employee' : 'employees'} checked in
-            </span>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-foreground-muted">
+                {roster.length} {roster.length === 1 ? 'employee' : 'employees'} checked in
+              </span>
+              <Link
+                href="/admin/reports/roster?period=day"
+                className="font-medium text-foreground-muted hover:text-foreground"
+              >
+                View any date →
+              </Link>
+            </div>
           }
         />
         {roster.length === 0 ? (

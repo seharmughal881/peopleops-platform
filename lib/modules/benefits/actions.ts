@@ -69,6 +69,54 @@ export async function updatePlan(formData: FormData) {
   return { ok: true }
 }
 
+export async function deletePlan(formData: FormData) {
+  const actor = await requirePermission('benefit:*')
+  const id = String(formData.get('id') || '')
+  const force = formData.get('force') === 'true'
+  const plan = await prisma.benefitPlan.findUnique({
+    where: { id },
+    include: { _count: { select: { enrollments: true } } },
+  })
+  if (!plan) return { error: 'Plan not found' }
+  if (plan._count.enrollments > 0 && !force) {
+    return { error: 'Cannot delete a plan with enrollments. Archive it instead.' }
+  }
+
+  let cascadedDependents = 0
+  await prisma.$transaction(async (tx) => {
+    if (plan._count.enrollments > 0) {
+      const enrollmentIds = (
+        await tx.benefitEnrollment.findMany({ where: { planId: id }, select: { id: true } })
+      ).map((e) => e.id)
+      if (enrollmentIds.length > 0) {
+        const dep = await tx.benefitDependent.deleteMany({
+          where: { enrollmentId: { in: enrollmentIds } },
+        })
+        cascadedDependents = dep.count
+        await tx.benefitEnrollment.deleteMany({ where: { planId: id } })
+      }
+    }
+    await tx.benefitPlan.delete({ where: { id } })
+  })
+
+  await recordAudit({
+    userId: actor.id,
+    action: force ? 'benefit.plan.force_deleted' : 'benefit.plan.deleted',
+    entityType: 'BenefitPlan',
+    entityId: id,
+    before: {
+      name: plan.name,
+      type: plan.type,
+      monthlyPremium: plan.monthlyPremium,
+      employerShare: plan.employerShare,
+      cascadedEnrollments: plan._count.enrollments,
+      cascadedDependents,
+    },
+  })
+  revalidatePath('/admin/benefits')
+  return { ok: true }
+}
+
 export async function togglePlanActive(formData: FormData) {
   const actor = await requirePermission('benefit:*')
   const id = String(formData.get('id') || '')

@@ -49,10 +49,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     {
       label: 'Operations',
       items: [
+        { label: 'Approvals', href: '/admin/approvals', icon: <CheckSquareIcon /> },
         { label: 'Leave requests', href: '/admin/leave', icon: <CalendarIcon /> },
         { label: 'Leave policies', href: '/admin/leave-policies', icon: <CalendarIcon /> },
         { label: 'Holidays', href: '/admin/holidays', icon: <CalendarDaysIcon /> },
         { label: 'Shifts', href: '/admin/shifts', icon: <ClockIcon /> },
+        { label: 'Timesheets', href: '/admin/timesheets', icon: <ClockIcon /> },
         { label: 'Biometric devices', href: '/admin/biometric', icon: <KeyIcon /> },
         { label: 'Payroll', href: '/admin/payroll', icon: <WalletIcon /> },
         { label: 'Expenses', href: '/admin/expenses', icon: <ReceiptIcon /> },

@@ -41,6 +41,20 @@ export async function pendingExpenseApprovalsFor(approverId: string) {
   return approvals.map((a) => ({ approval: a, expense: byId.get(a.entityId) }))
 }
 
+export async function pendingExpenseApprovalsAll() {
+  const approvals = await prisma.approval.findMany({
+    where: { status: 'pending', entityType: 'Expense' },
+    orderBy: { createdAt: 'desc' },
+  })
+  const ids = approvals.map((a) => a.entityId)
+  const expenses = await prisma.expense.findMany({
+    where: { id: { in: ids } },
+    include: { employee: true, receipts: { select: { id: true } } },
+  })
+  const byId = new Map(expenses.map((e) => [e.id, e]))
+  return approvals.map((a) => ({ approval: a, expense: byId.get(a.entityId) }))
+}
+
 export async function summary() {
   const rows = await prisma.expense.groupBy({
     by: ['status'],
