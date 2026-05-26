@@ -1,3 +1,4 @@
+import Link from 'next/link'
 import { Card, CardHeader, Stat } from '@/lib/ui/Card'
 import { HBarChart, LineChart } from '@/lib/ui/Chart'
 import { Badge } from '@/lib/ui/Badge'
@@ -10,6 +11,8 @@ import {
   headcountByDepartment,
   headcountTrend,
   leaveSummary,
+  monthlyAttendanceInsights,
+  monthlyLeaveSummary,
 } from '@/lib/modules/reporting'
 import { documentsExpiringSoon } from '@/lib/modules/compliance'
 
@@ -28,17 +31,29 @@ function formatBreakMinutes(regular: number, namaz: number): string {
 
 export default async function AdminHome() {
   const today = new Date()
-  const [headcount, trend, attrition, attritionTrend, attendance, leave, expiring, roster] =
-    await Promise.all([
-      headcountByDepartment(),
-      headcountTrend(12),
-      attritionThisYear(),
-      attritionMonthlyTrend(12),
-      attendanceInsights(30),
-      leaveSummary(),
-      documentsExpiringSoon(60),
-      dailyAttendanceRoster(today),
-    ])
+  const [
+    headcount,
+    trend,
+    attrition,
+    attritionTrend,
+    attendance,
+    leave,
+    expiring,
+    roster,
+    monthlyAttendance,
+    monthlyLeave,
+  ] = await Promise.all([
+    headcountByDepartment(),
+    headcountTrend(12),
+    attritionThisYear(),
+    attritionMonthlyTrend(12),
+    attendanceInsights(30),
+    leaveSummary(),
+    documentsExpiringSoon(60),
+    dailyAttendanceRoster(today),
+    monthlyAttendanceInsights(today),
+    monthlyLeaveSummary(today),
+  ])
 
   const totalEmployees = headcount.reduce((s, h) => s + h.count, 0)
   const firstHc = trend[0]?.headcount ?? 0
@@ -73,6 +88,45 @@ export default async function AdminHome() {
           hint={`${attrition.separations} separations`}
         />
       </div>
+
+      <Card>
+        <CardHeader
+          title={`This month · ${monthlyAttendance.monthLabel}`}
+          subtitle="Leave, late check-ins, and overtime so far this calendar month"
+        />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Link
+            href="/admin/reports/this-month?view=leave"
+            className="block rounded-lg transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <Stat
+              label="Approved leave"
+              value={monthlyLeave.approved}
+              hint={`${monthlyLeave.approvedDays} days · ${monthlyLeave.pending} pending`}
+            />
+          </Link>
+          <Link
+            href="/admin/reports/this-month?view=late"
+            className="block rounded-lg transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <Stat
+              label="Late check-ins"
+              value={monthlyAttendance.lateCount}
+              hint={`${monthlyAttendance.totalLogs} total check-ins`}
+            />
+          </Link>
+          <Link
+            href="/admin/reports/this-month?view=overtime"
+            className="block rounded-lg transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <Stat
+              label="Extra (overtime) hours"
+              value={`${monthlyAttendance.overtimeHours}h`}
+              hint={`${monthlyAttendance.missedCount} missed days`}
+            />
+          </Link>
+        </div>
+      </Card>
 
       <Card>
         <CardHeader

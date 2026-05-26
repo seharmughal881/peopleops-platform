@@ -31,3 +31,11 @@ export function daysAgo(n: number): Date {
 export function startOfYear(): Date {
   return new Date(new Date().getFullYear(), 0, 1)
 }
+
+export function startOfMonth(ref: Date = new Date()): Date {
+  return new Date(ref.getFullYear(), ref.getMonth(), 1)
+}
+
+export function startOfNextMonth(ref: Date = new Date()): Date {
+  return new Date(ref.getFullYear(), ref.getMonth() + 1, 1)
+}

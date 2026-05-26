@@ -1,6 +1,6 @@
 import 'server-only'
 import { prisma } from '@/lib/db/client'
-import { daysAgo } from './_time'
+import { daysAgo, startOfMonth, startOfNextMonth } from './_time'
 
 // "Late" is anyone who clocked in after 09:30 local server time on their workday.
 // This is a default until we wire shifts (lib/modules/attendance has shift logic
@@ -162,6 +162,122 @@ export async function dailyAttendanceRoster(forDate: Date = new Date()): Promise
       openBreak,
     }
   })
+}
+
+export type MonthlyLateRow = {
+  employeeId: string
+  employeeCode: string
+  name: string
+  department: string | null
+  clockIn: Date
+  minutesLate: number
+}
+
+export async function monthlyLateCheckIns(ref: Date = new Date()): Promise<MonthlyLateRow[]> {
+  const start = startOfMonth(ref)
+  const end = startOfNextMonth(ref)
+  const logs = await prisma.attendanceLog.findMany({
+    where: { clockIn: { gte: start, lt: end } },
+    select: {
+      clockIn: true,
+      employee: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          employeeCode: true,
+          department: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { clockIn: 'desc' },
+  })
+  const rows: MonthlyLateRow[] = []
+  for (const l of logs) {
+    if (!isLate(l.clockIn)) continue
+    const lateBy = (l.clockIn.getHours() - LATE_HOUR) * 60 + (l.clockIn.getMinutes() - LATE_MINUTE)
+    rows.push({
+      employeeId: l.employee.id,
+      employeeCode: l.employee.employeeCode,
+      name: `${l.employee.firstName} ${l.employee.lastName}`,
+      department: l.employee.department?.name ?? null,
+      clockIn: l.clockIn,
+      minutesLate: lateBy,
+    })
+  }
+  return rows
+}
+
+export type MonthlyOvertimeRow = {
+  employeeId: string
+  employeeCode: string
+  name: string
+  department: string | null
+  clockIn: Date
+  clockOut: Date | null
+  overtimeHours: number
+  netHours: number | null
+}
+
+export async function monthlyOvertimeLogs(ref: Date = new Date()): Promise<MonthlyOvertimeRow[]> {
+  const start = startOfMonth(ref)
+  const end = startOfNextMonth(ref)
+  const logs = await prisma.attendanceLog.findMany({
+    where: { clockIn: { gte: start, lt: end }, overtimeHours: { gt: 0 } },
+    select: {
+      clockIn: true,
+      clockOut: true,
+      overtimeHours: true,
+      netHours: true,
+      employee: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          employeeCode: true,
+          department: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { overtimeHours: 'desc' },
+  })
+  return logs.map((l) => ({
+    employeeId: l.employee.id,
+    employeeCode: l.employee.employeeCode,
+    name: `${l.employee.firstName} ${l.employee.lastName}`,
+    department: l.employee.department?.name ?? null,
+    clockIn: l.clockIn,
+    clockOut: l.clockOut,
+    overtimeHours: l.overtimeHours,
+    netHours: l.netHours,
+  }))
+}
+
+export async function monthlyAttendanceInsights(ref: Date = new Date()) {
+  const start = startOfMonth(ref)
+  const end = startOfNextMonth(ref)
+  const logs = await prisma.attendanceLog.findMany({
+    where: { clockIn: { gte: start, lt: end } },
+    select: { clockIn: true, overtimeHours: true, status: true },
+  })
+  let lateCount = 0
+  let overtimeHours = 0
+  let missedCount = 0
+  const dayKeys = new Set<string>()
+  for (const l of logs) {
+    if (isLate(l.clockIn)) lateCount++
+    if (l.overtimeHours > 0) overtimeHours += l.overtimeHours
+    if (l.status === 'missed') missedCount++
+    dayKeys.add(l.clockIn.toISOString().slice(0, 10))
+  }
+  return {
+    monthLabel: ref.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+    totalLogs: logs.length,
+    lateCount,
+    overtimeHours: Math.round(overtimeHours * 10) / 10,
+    missedCount,
+    daysCovered: dayKeys.size,
+  }
 }
 
 export async function topAbsentees(days = 30, limit = 10) {
