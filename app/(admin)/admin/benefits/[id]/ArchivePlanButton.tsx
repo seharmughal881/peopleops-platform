@@ -1,7 +1,7 @@
 'use client'
 
 import { useTransition } from 'react'
-import { togglePlanActive } from '@/lib/modules/benefits'
+import { togglePlanActive } from '@/lib/modules/benefits/actions'
 import { Button } from '@/lib/ui/Button'
 
 export function ArchivePlanButton({ id, active }: { id: string; active: boolean }) {

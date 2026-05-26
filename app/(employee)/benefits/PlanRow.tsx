@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { enroll, waivePlan, COVERAGE_LEVELS } from '@/lib/modules/benefits'
+import { enroll, waivePlan } from '@/lib/modules/benefits/actions'
+import { COVERAGE_LEVELS } from '@/lib/modules/benefits/schemas'
 import { Button } from '@/lib/ui/Button'
 import { Field, Select } from '@/lib/ui/Input'
 import { Badge } from '@/lib/ui/Table'

@@ -6,9 +6,8 @@ import {
   removeDependent,
   changeCoverageLevel,
   terminateEnrollment,
-  COVERAGE_LEVELS,
-  DEPENDENT_RELATIONS,
-} from '@/lib/modules/benefits'
+} from '@/lib/modules/benefits/actions'
+import { COVERAGE_LEVELS, DEPENDENT_RELATIONS } from '@/lib/modules/benefits/schemas'
 import { Button } from '@/lib/ui/Button'
 import { Field, Input, Select } from '@/lib/ui/Input'
 import { Badge } from '@/lib/ui/Table'

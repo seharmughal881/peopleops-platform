@@ -1,7 +1,7 @@
 'use client'
 
 import { useTransition } from 'react'
-import { terminateEnrollment } from '@/lib/modules/benefits'
+import { terminateEnrollment } from '@/lib/modules/benefits/actions'
 
 export function AdminTerminateButton({ id }: { id: string }) {
   const [pending, startTransition] = useTransition()

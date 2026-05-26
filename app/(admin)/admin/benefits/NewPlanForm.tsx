@@ -1,8 +1,8 @@
 'use client'
 
 import { useRef, useState, useTransition } from 'react'
-import { createPlan } from '@/lib/modules/benefits'
-import { PLAN_TYPES } from '@/lib/modules/benefits'
+import { createPlan } from '@/lib/modules/benefits/actions'
+import { PLAN_TYPES } from '@/lib/modules/benefits/schemas'
 import { Button } from '@/lib/ui/Button'
 import { Field, Input, Textarea, Select } from '@/lib/ui/Input'
 
