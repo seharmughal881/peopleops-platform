@@ -11,6 +11,7 @@ import {
 import { prisma } from '@/lib/db/client'
 import { startOfMonth, startOfNextMonth } from '@/lib/modules/reporting/_time'
 import { ArrowLeftIcon } from '@/lib/ui/icons'
+import { formatMinutes } from '@/lib/ui/format'
 
 type View = 'late' | 'overtime' | 'leave'
 
@@ -31,6 +32,7 @@ function ymd(d: Date | string): string {
 function timeOfDay(d: Date): string {
   return new Date(d).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true })
 }
+
 
 async function monthlyApprovedLeaves(ref: Date) {
   const start = startOfMonth(ref)
@@ -152,7 +154,7 @@ export default async function ThisMonthDetailPage({
                     <TD>{ymd(r.clockIn)}</TD>
                     <TD className="text-amber-600">{timeOfDay(r.clockIn)}</TD>
                     <TD>
-                      <Badge tone="warn">{r.minutesLate}m late</Badge>
+                      <Badge tone="warn">{formatMinutes(r.minutesLate)} late</Badge>
                     </TD>
                   </TR>
                 ))}

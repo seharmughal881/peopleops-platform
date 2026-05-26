@@ -3,6 +3,7 @@ import { getOpenLog, listMyAttendance } from '@/lib/modules/attendance'
 import { myOvertimeEntries } from '@/lib/modules/overtime-entries'
 import { Card, CardHeader } from '@/lib/ui/Card'
 import { Table, THead, TR, TH, TD, Badge } from '@/lib/ui/Table'
+import { formatMinutes } from '@/lib/ui/format'
 import { ClockButtons } from './ClockButtons'
 import { ExtraHoursForm, CancelEntryButton } from './ExtraHoursForm'
 
@@ -79,7 +80,7 @@ export default async function AttendancePage() {
                     <TD>{isNamaz ? <Badge tone="success">🕌 Namaz</Badge> : <Badge tone="neutral">☕ Break</Badge>}</TD>
                     <TD>{start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</TD>
                     <TD>{end ? end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : <Badge tone="warn">in progress</Badge>}</TD>
-                    <TD>{durationMin !== null ? `${durationMin} min` : '—'}</TD>
+                    <TD>{durationMin !== null ? formatMinutes(durationMin) : '—'}</TD>
                   </TR>
                 )
               })}
@@ -177,8 +178,8 @@ export default async function AttendancePage() {
                   <TD>{outDate ? outDate.toLocaleTimeString() : '—'}</TD>
                   <TD>{netHours}</TD>
                   <TD>{l.overtimeHours > 0 ? <Badge tone="warn">{overtime}</Badge> : '—'}</TD>
-                  <TD>{regularMin > 0 ? `${regularMin}m` : '—'}</TD>
-                  <TD>{namazMin > 0 ? `🕌 ${namazMin}m` : '—'}</TD>
+                  <TD>{regularMin > 0 ? formatMinutes(regularMin) : '—'}</TD>
+                  <TD>{namazMin > 0 ? `🕌 ${formatMinutes(namazMin)}` : '—'}</TD>
                   <TD><Badge tone={l.status === 'overtime' ? 'warn' : l.status === 'missed' ? 'danger' : 'neutral'}>{l.status}</Badge></TD>
                   <TD>{l.source}</TD>
                 </TR>
