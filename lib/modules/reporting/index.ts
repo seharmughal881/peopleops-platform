@@ -30,6 +30,8 @@ export {
   attendanceDailyTrend,
   topLateComers,
   topAbsentees,
+  dailyAttendanceRoster,
+  type DailyAttendanceRow,
 } from './attendance'
 
 export async function leaveSummary() {

@@ -96,6 +96,74 @@ export async function topLateComers(days = 30, limit = 10) {
     .slice(0, limit)
 }
 
+export type DailyAttendanceRow = {
+  employeeId: string
+  employeeCode: string
+  name: string
+  department: string | null
+  clockIn: Date
+  clockOut: Date | null
+  netHours: number | null
+  overtimeHours: number
+  status: string
+  isLate: boolean
+  regularBreakMinutes: number
+  namazBreakMinutes: number
+  openBreak: boolean
+}
+
+export async function dailyAttendanceRoster(forDate: Date = new Date()): Promise<DailyAttendanceRow[]> {
+  const dayStart = new Date(forDate)
+  dayStart.setHours(0, 0, 0, 0)
+  const dayEnd = new Date(dayStart)
+  dayEnd.setDate(dayEnd.getDate() + 1)
+
+  const logs = await prisma.attendanceLog.findMany({
+    where: { clockIn: { gte: dayStart, lt: dayEnd } },
+    include: {
+      breaks: { select: { startedAt: true, endedAt: true, type: true } },
+      employee: {
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          employeeCode: true,
+          department: { select: { name: true } },
+        },
+      },
+    },
+    orderBy: { clockIn: 'asc' },
+  })
+
+  return logs.map((l) => {
+    let regularMs = 0
+    let namazMs = 0
+    let openBreak = false
+    for (const b of l.breaks) {
+      const end = b.endedAt ?? new Date()
+      if (!b.endedAt) openBreak = true
+      const ms = Math.max(0, end.getTime() - b.startedAt.getTime())
+      if (b.type === 'namaz') namazMs += ms
+      else regularMs += ms
+    }
+    return {
+      employeeId: l.employee.id,
+      employeeCode: l.employee.employeeCode,
+      name: `${l.employee.firstName} ${l.employee.lastName}`,
+      department: l.employee.department?.name ?? null,
+      clockIn: l.clockIn,
+      clockOut: l.clockOut,
+      netHours: l.netHours,
+      overtimeHours: l.overtimeHours,
+      status: l.status,
+      isLate: isLate(l.clockIn),
+      regularBreakMinutes: Math.round(regularMs / 60000),
+      namazBreakMinutes: Math.round(namazMs / 60000),
+      openBreak,
+    }
+  })
+}
+
 export async function topAbsentees(days = 30, limit = 10) {
   const since = daysAgo(days)
   const missed = await prisma.attendanceLog.findMany({
